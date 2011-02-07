@@ -19,9 +19,8 @@ true
 >> KontoCheck::konto_check("52001","52250030")
 true
 
->> KontoCheck::bank_name("52250030")
-"hahaa!"
-(Wutt??? Doesn't work yet. Obviously)
+>> KontoCheck::bank_name("10010010")
+"Postbank"
 </pre>
 
 h2. Short 'Documentation'

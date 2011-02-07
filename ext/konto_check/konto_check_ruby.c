@@ -81,6 +81,7 @@ VALUE load_bank_data(VALUE self, VALUE path_rb) {
   int ret = generate_lut(path, tmp_lut, "Temporary LUT file", 2);
   switch (ret) {
     case LUT1_FILE_GENERATED:
+    case LUT_V2_FILE_GENERATED:
       break;
     case FILE_READ_ERROR:
       rb_raise(rb_eRuntimeError, "[%d] KontoCheck: can not open file '%s'. Use the file 'blz_yyyymmdd.txt' from http://www.bundesbank.de/zahlungsverkehr/zahlungsverkehr_bankleitzahlen_download.php", ret, path);
