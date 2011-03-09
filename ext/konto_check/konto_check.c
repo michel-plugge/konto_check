@@ -152,7 +152,6 @@ static char verbose_debug_buffer[128];
 #define free(ptr) efree(ptr)
 #endif
 
-#line 666 "konto_check.lxx"
 
    /* Testwert zur Markierung ung¸ltiger Ziffern im BLZ-String (>8 Stellen) */
 #define BLZ_FEHLER 100000000
@@ -288,7 +287,6 @@ static char verbose_debug_buffer[128];
     */
 #define CHECK_RETVAL(fkt) do{if((retval=fkt)!=OK)goto fini;}while(0)     /* es muﬂ noch aufger‰umt werden, daher goto */
 #define CHECK_RETURN(fkt) do{if((retval=fkt)!=OK)return retval;}while(0)
-#line 807 "konto_check.lxx"
 
    /* einige Makros zur Umwandlung zwischen unsigned int und char */
 #define UCP (unsigned char*)
@@ -397,7 +395,6 @@ int pz=-777;
 
 #define E_START(x)
 #define E_END(x)
-#line 921 "konto_check.lxx"
 
    /* Variable f¸r die Methoden 27, 29 und 69 */
 const static int m10h_digits[4][10]={
@@ -1105,7 +1102,6 @@ static int read_lut_block_int(FILE *lut,int slot,int typ,UINT4 *blocklen,char **
             FREE(sbuffer);
             RETURN(ERROR_MALLOC);
          }
-#line 1646 "konto_check.lxx"
 
          if(fread(sbuffer,1,compressed_len,lut)<compressed_len){
             FREE(sbuffer);
@@ -2302,7 +2298,6 @@ DLL_EXPORT int lut_info_b(char *lut_name,char **info1,char **info2,int *valid1,i
  * ###########################################################################
  */
 
-#line 2843 "konto_check.lxx"
 DLL_EXPORT int lut_info(char *lut_name,char **info1,char **info2,int *valid1,int *valid2)
 {
    char *ptr,*ptr1,buffer[128];
@@ -2391,7 +2386,6 @@ DLL_EXPORT int lut_info(char *lut_name,char **info1,char **info2,int *valid1,int
 
       /* Infoblocks lesen: 1. Infoblock */
    if((ret=read_lut_block_int(in,0,LUT2_INFO,&cnt,&ptr))==OK){
-#line 2933 "konto_check.lxx"
       *(ptr+cnt)=0;
       if(valid1){
          for(ptr1=ptr,v1=v2=0;*ptr1 && *ptr1!='\n' && !isdigit(*ptr1);ptr1++);
@@ -2438,7 +2432,6 @@ DLL_EXPORT int lut_info(char *lut_name,char **info1,char **info2,int *valid1,int
 
       /* Infoblocks lesen: 2. Infoblock */
    if((ret=read_lut_block_int(in,0,LUT2_2_INFO,&cnt,&ptr))==OK){
-#line 2981 "konto_check.lxx"
       *(ptr+cnt)=0;
       if(valid2){
          for(ptr1=ptr,v1=v2=0;*ptr1 && *ptr1!='\n' && !isdigit(*ptr1);ptr1++);
@@ -2647,7 +2640,6 @@ DLL_EXPORT int copy_lutfile(char *old_name,char *new_name,int new_slots)
    qsort(slotdir,slot_cnt,sizeof(int),sort_int);
    for(last_slot=-1,i=0;i<slot_cnt;i++)if((typ=slotdir[i]) && typ!=last_slot){
       read_lut_block_int(lut1,0,typ,&len,&data);
-#line 3191 "konto_check.lxx"
       write_lut_block_int(lut2,typ,len,data);
       FREE(data);
       last_slot=typ;
@@ -4019,7 +4011,6 @@ DLL_EXPORT int lut_nachfolge_blz_i(int b,int zweigstelle,int *retval)
    return nachfolge_blz[startidx[idx]+zweigstelle];
 }
 
-#line 4568 "konto_check.lxx"
 /* Funktion lut_multiple() +ßßß2 */
 /* ###########################################################################
  * # lut_multiple(): Universalfunktion, um zu einer gegebenen Bankleitzahl   #
@@ -4281,7 +4272,6 @@ DLL_EXPORT int lut_cleanup(void)
    FREE(sort_blz);
    FREE(sort_pz_methoden);
    FREE(sort_plz);
-#line 4825 "konto_check.lxx"
    FREE(name);
    FREE(name_data);
    FREE(name_kurz);
@@ -4316,7 +4306,6 @@ DLL_EXPORT int lut_cleanup(void)
       lut_cleanup(); /* neuer Versuch, aufzur‰umen */
       RETURN(INIT_FATAL_ERROR);
    }
-#line 4865 "konto_check.lxx"
    init_status&=1;
    init_in_progress=0;
    return OK;
@@ -4669,7 +4658,6 @@ static void init_atoi_table(void)
    lut_block_name2[113]="2. NachfolgeBLZ";
    lut_block_name2[114]="2. Name, Kurzn.";
    lut_block_name2[115]="2. Infoblock";
-#line 5120 "konto_check.lxx"
    init_status|=1;
 }
 
@@ -4729,7 +4717,6 @@ static int kto_check_int(char *x_blz,int pz_methode,char *kto)
 
    switch(pz_methode){
 
-#line 5183 "konto_check.lxx"
 /* Berechnungsmethoden 00 bis 09 +ßßß3
    Berechnung nach der Methode 00 +ßßß4 */
 /*
@@ -7170,7 +7157,6 @@ static int kto_check_int(char *x_blz,int pz_methode,char *kto)
  * # Pr¸fziffer nach Kennziffer 20 zu berechnen.                        #
  * ######################################################################
  */
-#line 7271 "konto_check.lxx"
       case 52:
 
             /* Berechnung nach Methode 20 */
@@ -7255,8 +7241,6 @@ static int kto_check_int(char *x_blz,int pz_methode,char *kto)
          else
             return FALSE;
 
-#line 7344 "konto_check.lxx"
-#line 7346 "konto_check.lxx"
 /*  Berechnung nach der Methode 53 +ßßß4 */
 /*
  * ######################################################################
@@ -7553,7 +7537,6 @@ static int kto_check_int(char *x_blz,int pz_methode,char *kto)
  * # bewerten.                                                          #
  * ######################################################################
  */
-#line 7613 "konto_check.lxx"
       case 57:
 #if DEBUG>0
       case 1057:  /* die Untermethoden werden in einem eigenen switch abgearbeitet, daher alle hier zusammen */
@@ -14707,7 +14690,6 @@ static int kto_check_int(char *x_blz,int pz_methode,char *kto)
          return NOT_IMPLEMENTED;
    }
 }
-#line 13660 "konto_check.lxx"
 
 /*
  * ######################################################################
@@ -14826,7 +14808,6 @@ DLL_EXPORT int kto_check_pz(char *pz,char *kto,char *blz)
  * ###########################################################################
  */
 
-#line 13779 "konto_check.lxx"
 #if DEBUG>0
 static int kto_check_blz_x(char *blz,char *kto,int *uk_cnt,RETVAL *retvals)
 #else
@@ -15169,7 +15150,6 @@ DLL_EXPORT int kto_check_blz_dbg(char *blz,char *kto,RETVAL *retvals)
  * # Copyright (C) 2007 Michael Plugge <m.plugge@hs-mannheim.de>             #
  * ###########################################################################
  */
-#line 14122 "konto_check.lxx"
 DLL_EXPORT int kto_check_pz_dbg(char *pz,char *kto,char *blz,RETVAL *retvals)
 {
    int untermethode,pz_methode;
@@ -15475,7 +15455,6 @@ DLL_EXPORT const char *kto_check_retval2txt(int retval)
       case OK_UNTERKONTO_GIVEN: return "wahrscheinlich ok; die Kontonummer enth‰lt eine Unterkontonummer";
       case OK_SLOT_CNT_MIN_USED: return "ok; die Anzahl Slots wurde auf SLOT_CNT_MIN hochgesetzt";
       default: return "ung¸ltiger R¸ckgabewert";
-#line 14301 "konto_check.lxx"
    }
 }
 
@@ -15619,7 +15598,6 @@ DLL_EXPORT const char *kto_check_retval2dos(int retval)
       case OK_UNTERKONTO_GIVEN: return "wahrscheinlich ok; die Kontonummer enthÑ lt eine Unterkontonummer";
       case OK_SLOT_CNT_MIN_USED: return "ok; die Anzahl Slots wurde auf SLOT_CNT_MIN hochgesetzt";
       default: return "ungÅltiger RÅckgabewert";
-#line 14318 "konto_check.lxx"
    }
 }
 
@@ -15763,7 +15741,6 @@ DLL_EXPORT const char *kto_check_retval2html(int retval)
       case OK_UNTERKONTO_GIVEN: return "wahrscheinlich ok; die Kontonummer enth&auml;lt eine Unterkontonummer";
       case OK_SLOT_CNT_MIN_USED: return "ok; die Anzahl Slots wurde auf SLOT_CNT_MIN hochgesetzt";
       default: return "ung&uuml;ltiger R&uuml;ckgabewert";
-#line 14335 "konto_check.lxx"
    }
 }
 
@@ -15907,7 +15884,6 @@ DLL_EXPORT const char *kto_check_retval2utf8(int retval)
       case OK_UNTERKONTO_GIVEN: return "wahrscheinlich ok; die Kontonummer enth√§lt eine Unterkontonummer";
       case OK_SLOT_CNT_MIN_USED: return "ok; die Anzahl Slots wurde auf SLOT_CNT_MIN hochgesetzt";
       default: return "ung√ºltiger R√ºckgabewert";
-#line 14352 "konto_check.lxx"
    }
 }
 
@@ -16051,7 +16027,6 @@ DLL_EXPORT const char *kto_check_retval2txt_short(int retval)
       case OK_UNTERKONTO_GIVEN: return "OK_UNTERKONTO_GIVEN";
       case OK_SLOT_CNT_MIN_USED: return "OK_SLOT_CNT_MIN_USED";
       default: return "UNDEFINED_RETVAL";
-#line 14369 "konto_check.lxx"
    }
 }
 
@@ -16107,7 +16082,6 @@ DLL_EXPORT int get_lut_info2_b(char *lutname,int *version,char **prolog_p,char *
    }
    else
       **user_info_p=0;
-#line 14410 "konto_check.lxx"
    FREE(prolog);
    return OK;
 }
@@ -16353,7 +16327,6 @@ DLL_EXPORT int dump_lutfile(char *outputname,UINT4 *required)
       default:
          break;
    }
-#line 14595 "konto_check.lxx"
    fputc('\n',out);
    while(--i)fputc('=',out);
    fputc('\n',out);
@@ -16976,7 +16949,6 @@ DLL_EXPORT int ipi_check(char *zweck)
  * # Copyright (C) 2009 Michael Plugge <m.plugge@hs-mannheim.de>             #
  * ###########################################################################
  */
-#line 15218 "konto_check.lxx"
 
 /* Funktion stri_cmp() +ßßß2 */
    /* diese Funktion macht dasselbe wie strcasecmp(), ist allerdings portabel:
@@ -17057,7 +17029,6 @@ static int binary_search(char *a,char **base,int *sort_a,int cnt,int *unten,int 
    return OK;
 }
 
-#line 15299 "konto_check.lxx"
 
 /* Funktion qcmp_bic() +ßßß2 */
 static int qcmp_bic(const void *ap,const void *bp)
@@ -17149,10 +17120,8 @@ static int qcmp_plz(const void *ap,const void *bp)
    else 
       return a-b;
 }
-#line 15314 "konto_check.lxx"
 
 /* Funktion suche_int1() +ßßß2 */
-#line 15317 "konto_check.lxx"
 static int suche_int1(int a1,int a2,int *anzahl,int **start_idx,int **zweigstelle,int **blz_base,
       int **base_name,int **base_sort,int(*cmp)(const void *, const void *),int cnt)
 {
@@ -17177,7 +17146,6 @@ static int suche_int1(int a1,int a2,int *anzahl,int **start_idx,int **zweigstell
 }
 
 /* Funktion suche_int2() +ßßß2 */
-#line 15342 "konto_check.lxx"
 static int suche_int2(int a1,int a2,int *anzahl,int **start_idx,int **zweigstelle,int **blz_base,
       int **base_name,int **base_sort,int(*cmp)(const void *, const void *))
 {
@@ -17371,7 +17339,6 @@ DLL_EXPORT int lut_suche_plz(int such1,int such2,int *anzahl,int **start_idx,int
    return suche_int2(such1,such2,anzahl,start_idx,zweigstelle,blz_base,&plz,&sort_plz,qcmp_plz);
 }
 
-#line 15479 "konto_check.lxx"
 
 /* Funktion kto_check_set_default() und kto_check_set_default_bin() +ßßß1 */
 /* ###########################################################################

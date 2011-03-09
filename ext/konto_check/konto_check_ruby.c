@@ -54,7 +54,7 @@
 #endif
 
 #define RUNTIME_ERROR(error) do{ \
-   snprintf(error_msg,511,"init: %s %s",kto_check_retval2txt_short(error),kto_check_retval2txt(error)); \
+   snprintf(error_msg,511,"KontoCheck: %s %s",kto_check_retval2txt_short(error),kto_check_retval2txt(error)); \
    rb_raise(rb_eRuntimeError,error_msg); \
 }while(0)
 
@@ -109,13 +109,51 @@ static void get_params_file(int argc,VALUE* argv,char *arg1s,int *arg1i,int *arg
 }
 
 /**
+ * get_params_int()
+ *
+ * extract two numeric params from argc/argv (for integer search functions)
+ */
+static void get_params_int(int argc,VALUE* argv,int *arg1,int *arg2)
+{
+   char buffer[16];
+   int len;
+   VALUE arg1_rb,arg2_rb;
+
+   rb_scan_args(argc,argv,"11",&arg1_rb,&arg2_rb);
+
+   if(NIL_P(arg1_rb))
+      *arg1=0;
+   else if(TYPE(arg1_rb)==RUBY_T_STRING){
+      strncpy(buffer,RSTRING_PTR(arg1_rb),15);
+         /* der Ruby-String ist nicht notwendig null-terminiert; manuell erledigen */
+      if((len=RSTRING_LEN(arg1_rb))>15)len=15;
+      *(buffer+len)=0;
+      *arg1=atoi(buffer);
+   }
+   else
+      *arg1=NUM2INT(arg1_rb);
+
+   if(NIL_P(arg2_rb))
+      *arg2=*arg1;
+   else if(TYPE(arg2_rb)==RUBY_T_STRING){
+      strncpy(buffer,RSTRING_PTR(arg2_rb),15);
+      if((len=RSTRING_LEN(arg2_rb))>15)len=15;
+      *(buffer+len)=0;
+      *arg2=atoi(buffer);
+   }
+   else
+      *arg2=NUM2INT(arg2_rb);
+   return;
+}
+
+/**
  * get_params()
  *
  * extract params from argc/argv, convert&check results
  */
 static void get_params(int argc,VALUE* argv,char *arg1s,char *arg2s,int *argi,int optargs)
 {
-   int len;
+   int len,maxlen=9;
    VALUE arg1_rb,arg2_rb;
 
    switch(optargs){
@@ -135,14 +173,24 @@ static void get_params(int argc,VALUE* argv,char *arg1s,char *arg2s,int *argi,in
          rb_scan_args(argc,argv,"20",&arg1_rb,&arg2_rb);
          break;
 
+      case 3:  /* ein notwendiger Parameter (für iban_check) */
+         rb_scan_args(argc,argv,"10",&arg1_rb);
+         maxlen=128;
+         break;
+
+      case 4:  /* ein notwendiger Parameter (für ipi_gen) */
+         rb_scan_args(argc,argv,"10",&arg1_rb);
+         maxlen=24;
+         break;
+
       default:
          break;
    }
 
    switch(TYPE(arg1_rb)){
       case RUBY_T_STRING:
-         strncpy(arg1s,RSTRING_PTR(arg1_rb),15);
-         if((len=RSTRING_LEN(arg1_rb))>15)len=15;
+         strncpy(arg1s,RSTRING_PTR(arg1_rb),maxlen);
+         if((len=RSTRING_LEN(arg1_rb))>maxlen)len=maxlen;
          *(arg1s+len)=0;
          break;
       case RUBY_T_FLOAT:
@@ -153,10 +201,13 @@ static void get_params(int argc,VALUE* argv,char *arg1s,char *arg2s,int *argi,in
              * z.B. Kontonummern (10 Stellen). Mit snprintf wird dann eine
              * Stringversion erzeugt - nicht schnell aber einfach :-).
              */
-         snprintf(arg1s,16,"%5.0f",NUM2DBL(arg1_rb));
+         snprintf(arg1s,maxlen,"%5.0f",NUM2DBL(arg1_rb));
          break;
       default:
-         rb_raise(rb_eRuntimeError,"Unable to convert given blz.");
+         if(!optargs)
+            rb_raise(rb_eRuntimeError,"Unable to convert given blz.");
+         else
+            rb_raise(rb_eRuntimeError,"Unable to convert given value.");
          break;
    }
    if(optargs==2)switch(TYPE(arg2_rb)){  /* für konto_check(): kto holen */
@@ -451,15 +502,13 @@ static VALUE lut_info_rb(int argc,VALUE* argv,VALUE self)
 /**
  * KontoCheck::load_bank_data(<datafile>)
  *
- * initialize the underlying C library konto_check with the bank
- * information from datafile.
- * Internally, this file is first transformed into a LUT file and then
- * read.
- *
- * For the datafile, use the file 'blz_yyyymmdd.txt' from
+ * This function was the old initialization function for konto_check; it is now
+ * replaced by init() for initialization and generate_lutfile() for generating
+ * a data file with all bank informations from blz_yyyymmdd.txt from
  * http://www.bundesbank.de/zahlungsverkehr/zahlungsverkehr_bankleitzahlen_download.php
- * These files are updated every three months, so be sure to
- * replace them regularly.
+ *
+ * This function serves now only as a schibbolet to check if someone uses the
+ * old interface :-).
  */
 
  /****************************************************************************
@@ -476,40 +525,112 @@ static VALUE lut_info_rb(int argc,VALUE* argv,VALUE self)
   ****************************************************************************/
 
 static VALUE load_bank_data(VALUE self, VALUE path_rb) {
-  char *path,*tmp_lut;
+   rb_raise(rb_eRuntimeError, "Perhaps you used the old interface of konto_check.\n"
+         "Use KontoCheck::init() to initialize the library\n"
+         "and check the order of function arguments for konto_test(blz,kto)");
+}
 
-  path= RSTRING_PTR(path_rb);
-  tmp_lut = tmpnam(NULL);
+/**
+ * KontoCheck::iban_2bic(<blz>)
+ *
+ * determine the BIC for a given (german) IBAN
+ *
+ * possible return values for retval (and short description):
+ *
+ *    IBAN2BIC_ONLY_GERMAN       "Die Funktion iban2bic() arbeitet nur mit deutschen Bankleitzahlen"
+ *    LUT2_BIC_NOT_INITIALIZED   "Das Feld BIC wurde nicht initialisiert"
+ *    LUT2_NOT_INITIALIZED       "die Programmbibliothek wurde noch nicht initialisiert"
+ *    INVALID_BLZ_LENGTH         "die Bankleitzahl ist nicht achtstellig"
+ *    INVALID_BLZ                "die Bankleitzahl ist ungültig"
+ *    OK                         "ok"
+ */
+static VALUE iban2bic_rb(int argc,VALUE* argv,VALUE self)
+{
+   char iban[128],error_msg[512],blz[10],kto[16],*bic;
+   int retval;
 
-  // convert the Bankfile to a LUT file
-  int ret = generate_lut(path, tmp_lut, (char *)"Temporary LUT file", 2);
-  switch (ret) {
-    case LUT_V2_FILE_GENERATED:
-    case LUT1_FILE_GENERATED:
-    case OK:
-      break;
-    case FILE_READ_ERROR:
-      rb_raise(rb_eRuntimeError, "[%d] KontoCheck: can not open file '%s'. Use the file 'blz_yyyymmdd.txt' from http://www.bundesbank.de/zahlungsverkehr/zahlungsverkehr_bankleitzahlen_download.php", ret, path);
-    case INVALID_BLZ_FILE:
-      rb_raise(rb_eRuntimeError, "[%d] KontoCheck: invalid input file '%s'. Use the file 'blz_yyyymmdd.txt' from http://www.bundesbank.de/zahlungsverkehr/zahlungsverkehr_bankleitzahlen_download.php", ret, path);
-    default:
-      rb_raise(rb_eRuntimeError, "[%d] KontoCheck: error reading file '%s'. Use the file 'blz_yyyymmdd.txt' from http://www.bundesbank.de/zahlungsverkehr/zahlungsverkehr_bankleitzahlen_download.php", ret, tmp_lut);
-  }
+   get_params(argc,argv,iban,NULL,NULL,3);
+   bic=iban2bic(iban,&retval,blz,kto);
+   if(retval<0 && retval!=INVALID_BLZ)RUNTIME_ERROR(retval);
+   return rb_ary_new3(4,rb_str_new2(bic),INT2FIX(retval),rb_str_new2(blz),rb_str_new2(kto));
+}
 
-  // read the LUT file
-  ret = kto_check_init2(tmp_lut);
-  switch (ret) {
-    case LUT1_SET_LOADED:
-    case LUT_V2_FILE_GENERATED:
-    case LUT2_PARTIAL_OK:
-      return Qtrue;
-    case FILE_READ_ERROR:
-      rb_raise(rb_eRuntimeError, "[%d] KontoCheck: can not open tempfile '%s'.", ret, tmp_lut);
-    case INVALID_LUT_FILE:
-      rb_raise(rb_eRuntimeError, "[%d] KontoCheck: invalid input tempfile '%s'.", ret, tmp_lut);
-  }
-  rb_raise(rb_eRuntimeError, "[%d] KontoCheck: error reading tempfile '%s'.", ret, tmp_lut);
-  return Qnil;
+/**
+ * KontoCheck::iban_check(<blz>)
+ *
+ * test an IBAN
+ *
+ * possible return values for retval (and short description):
+ *
+ *    NO_GERMAN_BIC              "Ein Konto kann kann nur für deutsche Banken geprüft werden"
+ *    IBAN_OK_KTO_NOT            "Die Prüfziffer der IBAN stimmt, die der Kontonummer nicht"
+ *    KTO_OK_IBAN_NOT            "Die Prüfziffer der Kontonummer stimmt, die der IBAN nicht"
+ *    FALSE                      "falsch"
+ *    OK                         "ok"
+ *
+ * possible return values for retval_kc:
+ *    LUT2_NOT_INITIALIZED    "die Programmbibliothek wurde noch nicht initialisiert"
+ *    MISSING_PARAMETER       "Bei der Kontoprüfung fehlt ein notwendiger Parameter (BLZ oder Konto)"
+ *    NOT_IMPLEMENTED         "die Methode wurde noch nicht implementiert"
+ *    UNDEFINED_SUBMETHOD     "Die (Unter)Methode ist nicht definiert"
+ *    INVALID_BLZ             "Die (Unter)Methode ist nicht definiert"
+ *    INVALID_BLZ_LENGTH      "die Bankleitzahl ist nicht achtstellig"
+ *    INVALID_KTO             "das Konto ist ungültig"
+ *    INVALID_KTO_LENGTH      "ein Konto muß zwischen 1 und 10 Stellen haben"
+ *    FALSE                   "falsch"
+ *    NOT_DEFINED             "die Methode ist nicht definiert"
+ *    BAV_FALSE               "BAV denkt, das Konto ist falsch (konto_check hält es für richtig)"
+ *    OK                      "ok"
+ *    OK_NO_CHK               "ok, ohne Prüfung"
+ */
+static VALUE iban_check_rb(int argc,VALUE* argv,VALUE self)
+{
+   char iban[128];
+   int retval,retval_kc;
+
+   get_params(argc,argv,iban,NULL,NULL,3);
+   retval=iban_check(iban,&retval_kc);
+   return rb_ary_new3(2,INT2FIX(retval),INT2FIX(retval_kc));
+}
+
+/**
+ * KontoCheck::ipi_gen(<zweck>)
+ *
+ * determine the BIC for a given (german) IBAN
+ *
+ * possible return values for retval (and short description):
+ *
+ *    IPI_INVALID_LENGTH         "Die Länge des IPI-Verwendungszwecks darf maximal 18 Byte sein"
+ *    IPI_INVALID_CHARACTER      "Im strukturierten Verwendungszweck dürfen nur alphanumerische Zeichen vorkommen"
+ *    OK                         "ok"
+ */
+static VALUE ipi_gen_rb(int argc,VALUE* argv,VALUE self)
+{
+   char zweck[24],dst[24],papier[30];
+   int retval;
+
+   get_params(argc,argv,zweck,NULL,NULL,4);
+   retval=ipi_gen(zweck,dst,papier);
+   return rb_ary_new3(3,rb_str_new2(dst),INT2FIX(retval),rb_str_new2(papier));
+}
+
+/**
+ * KontoCheck::ipi_check(<zweck>)
+ *
+ * determine the BIC for a given (german) IBAN
+ *
+ * possible return values for retval (and short description):
+ *
+ *    IPI_CHECK_INVALID_LENGTH   "Der zu validierende strukturierete Verwendungszweck muß genau 20 Zeichen enthalten"
+ *    FALSE                      "falsch"
+ *    OK                         "ok"
+ */
+static VALUE ipi_check_rb(int argc,VALUE* argv,VALUE self)
+{
+   char zweck[128];
+
+   get_params(argc,argv,zweck,NULL,NULL,3);
+   return INT2FIX(ipi_check(zweck));
 }
 
 /**
@@ -559,6 +680,46 @@ static VALUE bank_filialen(int argc,VALUE* argv,VALUE self)
    cnt=lut_filialen(blz,&retval);
    if(retval==LUT2_BLZ_NOT_INITIALIZED || retval==LUT2_FILIALEN_NOT_INITIALIZED)RUNTIME_ERROR(retval);
    return rb_ary_new3(2,retval<=0?Qnil:INT2FIX(cnt),INT2FIX(retval));
+}
+
+/**
+ * KontoCheck::bank_alles(<blz> [,filiale])
+ *
+ * return all available information about a bank
+ *
+ * possible return values (and short description):
+ *
+ *    LUT2_NOT_INITIALIZED       "die Programmbibliothek wurde noch nicht initialisiert"
+ *    INVALID_BLZ_LENGTH         "die Bankleitzahl ist nicht achtstellig"
+ *    INVALID_BLZ                "die Bankleitzahl ist ungültig"
+ *    LUT2_PARTIAL_OK            "es wurden nicht alle Blocks geladen"
+ *    OK                         "ok"
+ */
+
+static VALUE bank_alles(int argc,VALUE* argv,VALUE self)
+{
+   char blz[16],**p_name,**p_name_kurz,**p_ort,**p_bic,*p_aenderung,*p_loeschung,aenderung[2],loeschung[2],error_msg[512];
+   int retval,filiale,cnt,*p_blz,*p_plz,*p_pan,p_pz,*p_nr,*p_nachfolge_blz;
+
+   get_params(argc,argv,blz,NULL,&filiale,1);
+   retval=lut_multiple(blz,&cnt,&p_blz, &p_name,&p_name_kurz,&p_plz,&p_ort,&p_pan,&p_bic,&p_pz,&p_nr,
+         &p_aenderung,&p_loeschung,&p_nachfolge_blz,NULL,NULL,NULL);
+   if(retval==LUT2_BLZ_NOT_INITIALIZED)RUNTIME_ERROR(retval);
+   if(filiale<0 || (cnt && filiale>=cnt))return(INT2FIX(LUT2_INDEX_OUT_OF_RANGE));  /* ungültige Filiale */
+
+      /* Fehler, die C-Arrays dürfen nicht dereferenziert werden */
+   if(retval<=0 && retval!=LUT2_PARTIAL_OK)return rb_ary_new3(2,INT2FIX(retval),Qnil);
+
+   *aenderung=p_aenderung[filiale];
+   *loeschung=p_loeschung[filiale];
+   *(aenderung+1)=*(loeschung+1)=0;
+
+#define SV(x) *x?rb_str_new2(x):Qnil
+#define IV(x) x>=0?INT2FIX(x):Qnil
+   return rb_ary_new3(13,INT2FIX(retval),IV(cnt),SV(p_name[filiale]),
+         SV(p_name_kurz[filiale]),IV(p_plz[filiale]),SV(p_ort[filiale]),
+         IV(p_pan[filiale]),SV(p_bic[filiale]),IV(p_pz),IV(p_nr[filiale]),
+         SV(aenderung),SV(loeschung),IV(p_nachfolge_blz[filiale]));
 }
 
 /**
@@ -837,6 +998,343 @@ static VALUE bank_nr(int argc,VALUE* argv,VALUE self)
 }
 
 /**
+ * Die Suchroutinen der C-Bibliothek sind eher Low-Level Routinen und ohne
+ * einen Blick in die Sourcen nicht intuitiv nutzbar ;-), daher hier zunächst
+ * eine kurze Einführung.
+ *
+ * Beim ersten Aufruf einer dieser Routinen wird zunächst getestet, ob das
+ * Array mit den Zweigstellen bereits erstellt wurde. Dieses Array
+ * korrespondiert mit der Tabelle der Bankleitzahlen; es enthält zu jedem Index
+ * die jeweilige Zweigstellennummer, wobei Hauptstellen den Wert 0 erhalten.
+ * Das erste Element in diesem Array entspricht der Bundesbank.
+ *
+ * Als zweites wird getestet, ob das Array mit den sortierten Werten schon
+ * vorhanden ist; falls nicht, wird Speicher allokiert, der entsprechende Block
+ * sortiert und die Indizes in das Array eingetragen (es wäre zu testen, ob die
+ * Initialisierung schneller ist, wenn man das Array in der LUT-Datei
+ * speichert).
+ *
+ * Um einen bestimmten Wert zu finden, wird eine binäre Suche durchgeführt.
+ * Wird das gesuchte Element gefunden, werden die folgenden Werte zurückgegeben:
+ *
+ *    - anzahl:      Anzahl der gefundenen Werte, die den Suchkriterien entsprechen
+ *
+ *    - start_idx:   Pointer auf den ersten Wert im Sortierarray. Die nächsten
+ *                   <anzahl> Elemente ab diesem Element entsprechen den
+ *                   Sortierkriterien. Die Werte geben dabei den Index innerhalb
+ *                   der BLZ-Datei an, beginnend mit 0 für die Bundesbank.
+ *
+ *    - zweigstelle: Dieses Array enthält die Zweigstellennummern der
+ *                   jeweiligen Banken. Es umfasst jedoch den Gesamtbestand der
+ *                   BLZ-Datei, nicht den des Sortierarrays.
+ *
+ *    - base_name:   Dies ist ein Array das die Werte der Suchfunktion (in der
+ *                   Reihenfolge der BLZ-Datei) enthält.
+ *
+ *    - blz_base:    Dies ist das Array mit den Bankleitzahlen.
+ *
+ * Beispiel: Der Aufruf
+ *
+ * retval=lut_suche_ort("aa",&anzahl,&start_idx,&zweigstelle,&base_name,&blz_base);
+ *
+ * liefert das folgende Ergebnis (mit der LUT-Datei vom 7.3.2011; bei anderen LUT-Dateien
+ * können sich die Indizes natürlich verschieben):
+ *
+ *    anzahl: 38
+ *    i:  0, start_idx[ 0]:  9259, blz_base[ 9259]: 58550130, zweigstelle[ 9259]: 42, base_name[ 9259]: Aach b Trier
+ *    i:  1, start_idx[ 1]: 12862, blz_base[12862]: 69251445, zweigstelle[12862]:  1, base_name[12862]: Aach, Hegau
+ *    i:  2, start_idx[ 2]: 12892, blz_base[12892]: 69290000, zweigstelle[12892]:  5, base_name[12892]: Aach, Hegau
+ *    i:  3, start_idx[ 3]:  3946, blz_base[ 3946]: 31010833, zweigstelle[ 3946]: 13, base_name[ 3946]: Aachen
+ *    i:  4, start_idx[ 4]:  4497, blz_base[ 4497]: 37060590, zweigstelle[ 4497]:  3, base_name[ 4497]: Aachen
+ *    i:  5, start_idx[ 5]:  4830, blz_base[ 4830]: 39000000, zweigstelle[ 4830]:  0, base_name[ 4830]: Aachen
+ *    i:  6, start_idx[ 6]:  4831, blz_base[ 4831]: 39010111, zweigstelle[ 4831]:  0, base_name[ 4831]: Aachen
+ *    i:  7, start_idx[ 7]:  4833, blz_base[ 4833]: 39020000, zweigstelle[ 4833]:  0, base_name[ 4833]: Aachen
+ *    i:  8, start_idx[ 8]:  4834, blz_base[ 4834]: 39040013, zweigstelle[ 4834]:  0, base_name[ 4834]: Aachen
+ *    i:  9, start_idx[ 9]:  4841, blz_base[ 4841]: 39050000, zweigstelle[ 4841]:  0, base_name[ 4841]: Aachen
+ *    i: 10, start_idx[10]:  4851, blz_base[ 4851]: 39060180, zweigstelle[ 4851]:  0, base_name[ 4851]: Aachen
+ *    i: 11, start_idx[11]:  4857, blz_base[ 4857]: 39060180, zweigstelle[ 4857]:  6, base_name[ 4857]: Aachen
+ *    i: 12, start_idx[12]:  4858, blz_base[ 4858]: 39060630, zweigstelle[ 4858]:  0, base_name[ 4858]: Aachen
+ *    i: 13, start_idx[13]:  4861, blz_base[ 4861]: 39070020, zweigstelle[ 4861]:  0, base_name[ 4861]: Aachen
+ *    i: 14, start_idx[14]:  4872, blz_base[ 4872]: 39070024, zweigstelle[ 4872]:  0, base_name[ 4872]: Aachen
+ *    i: 15, start_idx[15]:  4883, blz_base[ 4883]: 39080005, zweigstelle[ 4883]:  0, base_name[ 4883]: Aachen
+ *    i: 16, start_idx[16]:  4889, blz_base[ 4889]: 39080098, zweigstelle[ 4889]:  0, base_name[ 4889]: Aachen
+ *    i: 17, start_idx[17]:  4890, blz_base[ 4890]: 39080099, zweigstelle[ 4890]:  0, base_name[ 4890]: Aachen
+ *    i: 18, start_idx[18]:  4891, blz_base[ 4891]: 39160191, zweigstelle[ 4891]:  0, base_name[ 4891]: Aachen
+ *    i: 19, start_idx[19]:  4892, blz_base[ 4892]: 39161490, zweigstelle[ 4892]:  0, base_name[ 4892]: Aachen
+ *    i: 20, start_idx[20]:  4896, blz_base[ 4896]: 39162980, zweigstelle[ 4896]:  3, base_name[ 4896]: Aachen
+ *    i: 21, start_idx[21]:  4906, blz_base[ 4906]: 39500000, zweigstelle[ 4906]:  0, base_name[ 4906]: Aachen
+ *    i: 22, start_idx[22]:  6333, blz_base[ 6333]: 50120383, zweigstelle[ 6333]:  1, base_name[ 6333]: Aachen
+ *    i: 23, start_idx[23]: 10348, blz_base[10348]: 60420000, zweigstelle[10348]: 18, base_name[10348]: Aachen
+ *    i: 24, start_idx[24]: 16183, blz_base[16183]: 76026000, zweigstelle[16183]:  1, base_name[16183]: Aachen
+ *    i: 25, start_idx[25]: 10001, blz_base[10001]: 60069673, zweigstelle[10001]:  1, base_name[10001]: Aalen, Württ
+ *    i: 26, start_idx[26]: 10685, blz_base[10685]: 61370024, zweigstelle[10685]:  1, base_name[10685]: Aalen, Württ
+ *    i: 27, start_idx[27]: 10695, blz_base[10695]: 61370086, zweigstelle[10695]:  3, base_name[10695]: Aalen, Württ
+ *    i: 28, start_idx[28]: 10714, blz_base[10714]: 61420086, zweigstelle[10714]:  0, base_name[10714]: Aalen, Württ
+ *    i: 29, start_idx[29]: 10715, blz_base[10715]: 61430000, zweigstelle[10715]:  0, base_name[10715]: Aalen, Württ
+ *    i: 30, start_idx[30]: 10716, blz_base[10716]: 61440086, zweigstelle[10716]:  0, base_name[10716]: Aalen, Württ
+ *    i: 31, start_idx[31]: 10717, blz_base[10717]: 61450050, zweigstelle[10717]:  0, base_name[10717]: Aalen, Württ
+ *    i: 32, start_idx[32]: 10755, blz_base[10755]: 61450191, zweigstelle[10755]:  0, base_name[10755]: Aalen, Württ
+ *    i: 33, start_idx[33]: 10756, blz_base[10756]: 61480001, zweigstelle[10756]:  0, base_name[10756]: Aalen, Württ
+ *    i: 34, start_idx[34]: 10757, blz_base[10757]: 61490150, zweigstelle[10757]:  0, base_name[10757]: Aalen, Württ
+ *    i: 35, start_idx[35]: 10766, blz_base[10766]: 61490150, zweigstelle[10766]:  9, base_name[10766]: Aalen, Württ
+ *    i: 36, start_idx[36]:  7002, blz_base[ 7002]: 51050015, zweigstelle[ 7002]: 69, base_name[ 7002]: Aarbergen
+ *    i: 37, start_idx[37]:  7055, blz_base[ 7055]: 51091700, zweigstelle[ 7055]:  2, base_name[ 7055]: Aarbergen
+ * 
+ */
+
+/**
+ * KontoCheck::bank_suche_bic(<suchname>)
+ *
+ * return the sequence number of a bank (internal field of BLZ file)
+ *
+ * possible return values (and short description):
+ *
+ *    LUT1_FILE_USED             "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ *    LUT2_NOT_INITIALIZED       "die Programmbibliothek wurde noch nicht initialisiert"
+ *    LUT2_BIC_NOT_INITIALIZED   "Das Feld BIC wurde nicht initialisiert"
+ *    ERROR_MALLOC               "kann keinen Speicher allokieren"
+ *    KEY_NOT_FOUND              "Die Suche lieferte kein Ergebnis"
+ *    OK                         "ok"
+ */
+static VALUE bank_suche_bic(int argc,VALUE* argv,VALUE self)
+{
+   char such_name[128],**base_name,error_msg[512];
+   int i,j,retval,anzahl,*start_idx,*zweigstelle,*blz_base;
+   VALUE ret_blz,ret_idx,ret_suche;
+
+   get_params(argc,argv,such_name,NULL,NULL,3);
+   retval=lut_suche_bic(such_name,&anzahl,&start_idx,&zweigstelle,&base_name,&blz_base);
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   if(retval==KEY_NOT_FOUND)return rb_ary_new3(5,Qnil,Qnil,Qnil,INT2FIX(retval),INT2FIX(0));
+   ret_suche=rb_ary_new2(anzahl);
+   ret_blz=rb_ary_new2(anzahl);
+   ret_idx=rb_ary_new2(anzahl);
+   for(i=0;i<anzahl;i++){
+      j=start_idx[i];   /* Index innerhalb der BLZ-Datei */
+      rb_ary_store(ret_suche,i,rb_str_new2(base_name[j]));
+      rb_ary_store(ret_blz,i,INT2FIX(blz_base[j]));
+      rb_ary_store(ret_idx,i,INT2FIX(zweigstelle[j]));
+   }
+   return rb_ary_new3(5,ret_suche,ret_blz,ret_idx,INT2FIX(retval),INT2FIX(anzahl));
+}
+
+/**
+ * KontoCheck::bank_suche_namen(<suchname>)
+ *
+ * return the sequence number of a bank (internal field of BLZ file)
+ *
+ * possible return values (and short description):
+ *
+ *    LUT1_FILE_USED             "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ *    LUT2_NOT_INITIALIZED       "die Programmbibliothek wurde noch nicht initialisiert"
+ *    LUT2_NAME_NOT_INITIALIZED  "Das Feld Bankname wurde nicht initialisiert"
+ *    ERROR_MALLOC               "kann keinen Speicher allokieren"
+ *    KEY_NOT_FOUND              "Die Suche lieferte kein Ergebnis"
+ *    OK                         "ok"
+ */
+static VALUE bank_suche_namen(int argc,VALUE* argv,VALUE self)
+{
+   char such_name[128],**base_name,error_msg[512];
+   int i,j,retval,anzahl,*start_idx,*zweigstelle,*blz_base;
+   VALUE ret_blz,ret_idx,ret_suche;
+
+   get_params(argc,argv,such_name,NULL,NULL,3);
+   retval=lut_suche_namen(such_name,&anzahl,&start_idx,&zweigstelle,&base_name,&blz_base);
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   if(retval==KEY_NOT_FOUND)return rb_ary_new3(5,Qnil,Qnil,Qnil,INT2FIX(retval),INT2FIX(0));
+   ret_suche=rb_ary_new2(anzahl);
+   ret_blz=rb_ary_new2(anzahl);
+   ret_idx=rb_ary_new2(anzahl);
+   for(i=0;i<anzahl;i++){
+      j=start_idx[i];   /* Index innerhalb der BLZ-Datei */
+      rb_ary_store(ret_suche,i,rb_str_new2(base_name[j]));
+      rb_ary_store(ret_blz,i,INT2FIX(blz_base[j]));
+      rb_ary_store(ret_idx,i,INT2FIX(zweigstelle[j]));
+   }
+   return rb_ary_new3(5,ret_suche,ret_blz,ret_idx,INT2FIX(retval),INT2FIX(anzahl));
+}
+
+/**
+ * KontoCheck::bank_suche_namen_kurz(<suchname>)
+ *
+ * return the sequence number of a bank (internal field of BLZ file)
+ *
+ * possible return values (and short description):
+ *
+ *    LUT1_FILE_USED             "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ *    LUT2_NOT_INITIALIZED       "die Programmbibliothek wurde noch nicht initialisiert"
+ *    LUT2_NAME_KURZ_NOT_INITIALIZED "Das Feld Kurzname wurde nicht initialisiert"
+ *    ERROR_MALLOC               "kann keinen Speicher allokieren"
+ *    KEY_NOT_FOUND              "Die Suche lieferte kein Ergebnis"
+ *    OK                         "ok"
+ */
+static VALUE bank_suche_namen_kurz(int argc,VALUE* argv,VALUE self)
+{
+   char such_name[128],**base_name,error_msg[512];
+   int i,j,retval,anzahl,*start_idx,*zweigstelle,*blz_base;
+   VALUE ret_blz,ret_idx,ret_suche;
+
+   get_params(argc,argv,such_name,NULL,NULL,3);
+   retval=lut_suche_namen_kurz(such_name,&anzahl,&start_idx,&zweigstelle,&base_name,&blz_base);
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   if(retval==KEY_NOT_FOUND)return rb_ary_new3(5,Qnil,Qnil,Qnil,INT2FIX(retval),INT2FIX(0));
+   ret_suche=rb_ary_new2(anzahl);
+   ret_blz=rb_ary_new2(anzahl);
+   ret_idx=rb_ary_new2(anzahl);
+   for(i=0;i<anzahl;i++){
+      j=start_idx[i];   /* Index innerhalb der BLZ-Datei */
+      rb_ary_store(ret_suche,i,rb_str_new2(base_name[j]));
+      rb_ary_store(ret_blz,i,INT2FIX(blz_base[j]));
+      rb_ary_store(ret_idx,i,INT2FIX(zweigstelle[j]));
+   }
+   return rb_ary_new3(5,ret_suche,ret_blz,ret_idx,INT2FIX(retval),INT2FIX(anzahl));
+}
+
+/**
+ * KontoCheck::bank_suche_plz(<suchname>)
+ *
+ * return the sequence number of a bank (internal field of BLZ file)
+ *
+ * possible return values (and short description):
+ *
+ *    LUT1_FILE_USED             "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ *    LUT2_NOT_INITIALIZED       "die Programmbibliothek wurde noch nicht initialisiert"
+ *    LUT2_BLZ_NOT_INITIALIZED   "Das Feld BLZ wurde nicht initialisiert"
+ *    ERROR_MALLOC               "kann keinen Speicher allokieren"
+ *    KEY_NOT_FOUND              "Die Suche lieferte kein Ergebnis"
+ *    OK                         "ok"
+ */
+static VALUE bank_suche_plz(int argc,VALUE* argv,VALUE self)
+{
+   char error_msg[512];
+   int i,j,retval,such1,such2,anzahl,*start_idx,*base_name,*zweigstelle,*blz_base;
+   VALUE ret_blz,ret_idx,ret_suche;
+
+   get_params_int(argc,argv,&such1,&such2);
+   retval=lut_suche_plz(such1,such2,&anzahl,&start_idx,&zweigstelle,&base_name,&blz_base);
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   if(retval==KEY_NOT_FOUND)return rb_ary_new3(5,Qnil,Qnil,Qnil,INT2FIX(retval),INT2FIX(0));
+   ret_suche=rb_ary_new2(anzahl);
+   ret_blz=rb_ary_new2(anzahl);
+   ret_idx=rb_ary_new2(anzahl);
+   for(i=0;i<anzahl;i++){
+      j=start_idx[i];   /* Index innerhalb der BLZ-Datei */
+      rb_ary_store(ret_suche,i,INT2FIX(base_name[j]));
+      rb_ary_store(ret_blz,i,INT2FIX(blz_base[j]));
+      rb_ary_store(ret_idx,i,INT2FIX(zweigstelle[j]));
+   }
+   return rb_ary_new3(5,ret_suche,ret_blz,ret_idx,INT2FIX(retval),INT2FIX(anzahl));
+}
+
+/**
+ * KontoCheck::bank_suche_pz(<suchname>)
+ *
+ * return the sequence number of a bank (internal field of BLZ file)
+ *
+ * possible return values (and short description):
+ *
+ *    LUT1_FILE_USED             "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ *    LUT2_NOT_INITIALIZED       "die Programmbibliothek wurde noch nicht initialisiert"
+ *    LUT2_BLZ_NOT_INITIALIZED   "Das Feld BLZ wurde nicht initialisiert"
+ *    ERROR_MALLOC               "kann keinen Speicher allokieren"
+ *    KEY_NOT_FOUND              "Die Suche lieferte kein Ergebnis"
+ *    OK                         "ok"
+ */
+static VALUE bank_suche_pz(int argc,VALUE* argv,VALUE self)
+{
+   char error_msg[512];
+   int i,j,retval,such1,such2,anzahl,*start_idx,*base_name,*zweigstelle,*blz_base;
+   VALUE ret_blz,ret_idx,ret_suche;
+
+   get_params_int(argc,argv,&such1,&such2);
+   retval=lut_suche_pz(such1,such2,&anzahl,&start_idx,&zweigstelle,&base_name,&blz_base);
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   if(retval==KEY_NOT_FOUND)return rb_ary_new3(5,Qnil,Qnil,Qnil,INT2FIX(retval),INT2FIX(0));
+   ret_suche=rb_ary_new2(anzahl);
+   ret_blz=rb_ary_new2(anzahl);
+   ret_idx=rb_ary_new2(anzahl);
+   for(i=0;i<anzahl;i++){
+      j=start_idx[i];   /* Index innerhalb der BLZ-Datei */
+      rb_ary_store(ret_suche,i,INT2FIX(base_name[j]));
+      rb_ary_store(ret_blz,i,INT2FIX(blz_base[j]));
+      rb_ary_store(ret_idx,i,INT2FIX(zweigstelle[j]));
+   }
+   return rb_ary_new3(5,ret_suche,ret_blz,ret_idx,INT2FIX(retval),INT2FIX(anzahl));
+}
+
+/**
+ * KontoCheck::bank_suche_blz(<suchname>)
+ *
+ * return the sequence number of a bank (internal field of BLZ file)
+ *
+ * possible return values (and short description):
+ *
+ *    LUT1_FILE_USED             "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ *    LUT2_NOT_INITIALIZED       "die Programmbibliothek wurde noch nicht initialisiert"
+ *    LUT2_BLZ_NOT_INITIALIZED   "Das Feld BLZ wurde nicht initialisiert"
+ *    ERROR_MALLOC               "kann keinen Speicher allokieren"
+ *    KEY_NOT_FOUND              "Die Suche lieferte kein Ergebnis"
+ *    OK                         "ok"
+ */
+static VALUE bank_suche_blz(int argc,VALUE* argv,VALUE self)
+{
+   char error_msg[512];
+   int i,j,retval,such1,such2,anzahl,*start_idx,*base_name,*zweigstelle,*blz_base;
+   VALUE ret_blz,ret_idx,ret_suche;
+
+   get_params_int(argc,argv,&such1,&such2);
+   retval=lut_suche_blz(such1,such2,&anzahl,&start_idx,&zweigstelle,&base_name,&blz_base);
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   if(retval==KEY_NOT_FOUND)return rb_ary_new3(5,Qnil,Qnil,Qnil,INT2FIX(retval),INT2FIX(0));
+   ret_suche=rb_ary_new2(anzahl);
+   ret_blz=rb_ary_new2(anzahl);
+   ret_idx=rb_ary_new2(anzahl);
+   for(i=0;i<anzahl;i++){
+      j=start_idx[i];   /* Index innerhalb der BLZ-Datei */
+      rb_ary_store(ret_suche,i,INT2FIX(base_name[j]));
+      rb_ary_store(ret_blz,i,INT2FIX(blz_base[j]));
+      rb_ary_store(ret_idx,i,INT2FIX(zweigstelle[j]));
+   }
+   return rb_ary_new3(5,ret_suche,ret_blz,ret_idx,INT2FIX(retval),INT2FIX(anzahl));
+}
+
+/**
+ * KontoCheck::bank_suche_ort(<suchname>)
+ *
+ * return the sequence number of a bank (internal field of BLZ file)
+ *
+ * possible return values (and short description):
+ *
+ *    LUT1_FILE_USED             "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ *    LUT2_NOT_INITIALIZED       "die Programmbibliothek wurde noch nicht initialisiert"
+ *    LUT2_ORT_NOT_INITIALIZED   "Das Feld Ort wurde nicht initialisiert"
+ *    ERROR_MALLOC               "kann keinen Speicher allokieren"
+ *    KEY_NOT_FOUND              "Die Suche lieferte kein Ergebnis"
+ *    OK                         "ok"
+ */
+static VALUE bank_suche_ort(int argc,VALUE* argv,VALUE self)
+{
+   char such_name[128],**base_name,error_msg[512];
+   int i,j,retval,anzahl,*start_idx,*zweigstelle,*blz_base;
+   VALUE ret_blz,ret_idx,ret_suche;
+
+   get_params(argc,argv,such_name,NULL,NULL,3);
+   retval=lut_suche_ort(such_name,&anzahl,&start_idx,&zweigstelle,&base_name,&blz_base);
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   if(retval==KEY_NOT_FOUND)return rb_ary_new3(5,Qnil,Qnil,Qnil,INT2FIX(retval),INT2FIX(0));
+   ret_suche=rb_ary_new2(anzahl);
+   ret_blz=rb_ary_new2(anzahl);
+   ret_idx=rb_ary_new2(anzahl);
+   for(i=0;i<anzahl;i++){
+      j=start_idx[i];   /* Index innerhalb der BLZ-Datei */
+      rb_ary_store(ret_suche,i,rb_str_new2(base_name[j]));
+      rb_ary_store(ret_blz,i,INT2FIX(blz_base[j]));
+      rb_ary_store(ret_idx,i,INT2FIX(zweigstelle[j]));
+   }
+   return rb_ary_new3(5,ret_suche,ret_blz,ret_idx,INT2FIX(retval),INT2FIX(anzahl));
+}
+
+/**
  * The initialization method for this module
  */
 void Init_konto_check()
@@ -869,41 +1367,46 @@ void Init_konto_check()
        *    arguments (so -1 means all arguments are optional, -2 means one
        *    mandatory argument followed by optional arguments, and so on).
        *
-       * Es wäre zu testen, ob dieses Verhalten bei älteren Versionen noch
-       * gilt; dann müßte man eine entsprechende Verzweigung einbauen. Bei den
+       * Es wäre zu testen, ob dieses Verhalten bei älteren Versionen gilt;
+       * dann müßte man u.U. eine entsprechende Verzweigung einbauen. Bei den
        * aktuellen Varianten (Ruby 1.8.6 und 1.9.2) funktioniert diese
        * Variante.
        */
-   rb_define_module_function(KontoCheck, "init", init,-1);
-   rb_define_module_function(KontoCheck, "free", free_rb,0);
-   rb_define_module_function(KontoCheck, "konto_check", konto_check,-1);
-   rb_define_module_function(KontoCheck, "bank_valid", bank_valid,-1);
-   rb_define_module_function(KontoCheck, "bank_filialen", bank_filialen,-1);
-   rb_define_module_function(KontoCheck, "bank_name", bank_name,-1);
-   rb_define_module_function(KontoCheck, "bank_name_kurz", bank_name_kurz,-1);
-   rb_define_module_function(KontoCheck, "bank_plz", bank_plz,-1);
-   rb_define_module_function(KontoCheck, "bank_ort", bank_ort,-1);
-   rb_define_module_function(KontoCheck, "bank_pan", bank_pan,-1);
-   rb_define_module_function(KontoCheck, "bank_bic", bank_bic,-1);
-   rb_define_module_function(KontoCheck, "bank_nr", bank_nr,-1);
-   rb_define_module_function(KontoCheck, "bank_pz", bank_pz,-1);
-   rb_define_module_function(KontoCheck, "bank_aenderung", bank_aenderung,-1);
-   rb_define_module_function(KontoCheck, "bank_loeschung", bank_loeschung,-1);
-   rb_define_module_function(KontoCheck, "bank_nachfolge_blz", bank_nachfolge_blz,-1);
-   rb_define_module_function(KontoCheck, "dump_lutfile", dump_lutfile_rb,-1);
-   rb_define_module_function(KontoCheck, "lut_info",lut_info_rb,-1);
-   rb_define_module_function(KontoCheck, "retval2txt", retval2txt_rb, 1);
-   rb_define_module_function(KontoCheck, "retval2dos", retval2dos_rb, 1);
-   rb_define_module_function(KontoCheck, "retval2html", retval2html_rb, 1);
-   rb_define_module_function(KontoCheck, "retval2utf8", retval2utf8_rb, 1);
-   rb_define_module_function(KontoCheck, "generate_lutfile", generate_lutfile_rb,-1);
-
-   /* fehlende Funktionen:
-    * - iban
-    * - Suche
-    * - lut_multiple
-    */
-
-   rb_define_module_function(KontoCheck, "load_bank_data", load_bank_data, 1);
+   rb_define_module_function(KontoCheck,"init",init,-1);
+   rb_define_module_function(KontoCheck,"free",free_rb,0);
+   rb_define_module_function(KontoCheck,"konto_check",konto_check,-1);
+   rb_define_module_function(KontoCheck,"bank_valid",bank_valid,-1);
+   rb_define_module_function(KontoCheck,"bank_filialen",bank_filialen,-1);
+   rb_define_module_function(KontoCheck,"bank_alles",bank_alles,-1);
+   rb_define_module_function(KontoCheck,"bank_name",bank_name,-1);
+   rb_define_module_function(KontoCheck,"bank_name_kurz",bank_name_kurz,-1);
+   rb_define_module_function(KontoCheck,"bank_plz",bank_plz,-1);
+   rb_define_module_function(KontoCheck,"bank_ort",bank_ort,-1);
+   rb_define_module_function(KontoCheck,"bank_pan",bank_pan,-1);
+   rb_define_module_function(KontoCheck,"bank_bic",bank_bic,-1);
+   rb_define_module_function(KontoCheck,"bank_nr",bank_nr,-1);
+   rb_define_module_function(KontoCheck,"bank_pz",bank_pz,-1);
+   rb_define_module_function(KontoCheck,"bank_aenderung",bank_aenderung,-1);
+   rb_define_module_function(KontoCheck,"bank_loeschung",bank_loeschung,-1);
+   rb_define_module_function(KontoCheck,"bank_nachfolge_blz",bank_nachfolge_blz,-1);
+   rb_define_module_function(KontoCheck,"dump_lutfile",dump_lutfile_rb,-1);
+   rb_define_module_function(KontoCheck,"lut_info",lut_info_rb,-1);
+   rb_define_module_function(KontoCheck,"retval2txt",retval2txt_rb,1);
+   rb_define_module_function(KontoCheck,"retval2dos",retval2dos_rb,1);
+   rb_define_module_function(KontoCheck,"retval2html",retval2html_rb,1);
+   rb_define_module_function(KontoCheck,"retval2utf8",retval2utf8_rb,1);
+   rb_define_module_function(KontoCheck,"generate_lutfile",generate_lutfile_rb,-1);
+   rb_define_module_function(KontoCheck,"iban_check",iban_check_rb,-1);
+   rb_define_module_function(KontoCheck,"iban2bic",iban2bic_rb,-1);
+   rb_define_module_function(KontoCheck,"ipi_gen",ipi_gen_rb,-1);
+   rb_define_module_function(KontoCheck,"ipi_check",ipi_check_rb,-1);
+   rb_define_module_function(KontoCheck,"bank_suche_bic",bank_suche_bic,-1);
+   rb_define_module_function(KontoCheck,"bank_suche_namen",bank_suche_namen,-1);
+   rb_define_module_function(KontoCheck,"bank_suche_namen_kurz",bank_suche_namen_kurz,-1);
+   rb_define_module_function(KontoCheck,"bank_suche_ort",bank_suche_ort,-1);
+   rb_define_module_function(KontoCheck,"bank_suche_blz",bank_suche_blz,-1);
+   rb_define_module_function(KontoCheck,"bank_suche_plz",bank_suche_plz,-1);
+   rb_define_module_function(KontoCheck,"bank_suche_pz",bank_suche_pz,-1);
+   rb_define_module_function(KontoCheck,"load_bank_data",load_bank_data,1);
 }
 
