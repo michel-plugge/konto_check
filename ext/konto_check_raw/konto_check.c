@@ -15191,7 +15191,7 @@ DLL_EXPORT int kto_check_pz_dbg(char *pz,char *kto,char *blz,RETVAL *retvals){re
  * ###########################################################################
  */
 
-DLL_EXPORT char *kto_check_str(char *x_blz,char *kto,char *lut_name)
+DLL_EXPORT const char *kto_check_str(char *x_blz,char *kto,char *lut_name)
 {
    return kto_check_retval2txt_short(kto_check(x_blz,kto,lut_name));
 }
