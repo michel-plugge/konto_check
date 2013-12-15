@@ -1,16 +1,18 @@
-# Copyright (c) 2010 Provideal Systems GmbH
+# Copyright (c) 2010 Peter Horn
+# Copyright (c) 2011 Jan Schwenzien, Michael Plugge
+# Copyright (c) 2013 Michael Plugge
 #
 # This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
+# it under the terms of the GNU Lesser General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or (at your
+# option) any later version.
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the GNU General Public License
+# You should have received a copy of the GNU Lesser General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 require 'rubygems'
@@ -23,12 +25,19 @@ begin
   require 'jeweler'
   Jeweler::Tasks.new do |gem|
     gem.name = "konto_check"
-    gem.summary = %Q{Checking german BICs/Bank account numbers}
-    gem.description = %Q{Check whether a certain bic/account-no-combination can possibly be valid. It uses the C library kontocheck (see http://sourceforge.net/projects/kontocheck/) by Michael Plugge.}
-    gem.email = "info@provideal.net"
-    gem.homepage = "http://github.com/provideal/konto_check"
-    gem.authors = ["Provideal Systems GmbH","Michael Plugge"]
+    gem.summary = %Q{Checking german BICs/Bank account numbers and IBANs, generate IBANs, retrieve information about german Banks, search for Banks matching certain criteria, check IBAN or BIC, convert bic/account to IBAN and BIC}
+    gem.description = %Q{Check whether a certain bic/account-no-combination or an IBAN can possibly be valid, generate IBANs, retrieve informations about a bank or search for BICs matching certain criteria. It uses the C library kontocheck (see http://sourceforge.net/projects/kontocheck/) by Michael Plugge.}
+    gem.email = "m.plugge@hs-mannheim.de"
+    gem.files=Dir.glob('lib/**/*.rb')+Dir.glob('ext/**/*.{c,h,rb}')
+    gem.homepage = "http://kontocheck.sourceforge.net"
+    gem.authors = ["Provideal Systems GmbH","Jan Schwenzien","Michael Plugge"]
     gem.add_development_dependency "thoughtbot-shoulda", ">= 0"
+    gem.version = "5.2.1"
+    gem.extra_rdoc_files = [
+      "LICENSE",
+      "README.textile",
+      "ext/konto_check_raw/konto_check_raw_ruby.c",
+    ]
     #gem.files.exclude "ext"
     # gem is a Gem::Specification... see http://www.rubygems.org/read/chapter/20 for additional settings
   end
@@ -61,12 +70,15 @@ task :test => :check_dependencies
 
 task :default => :test
 
-require 'rake/rdoctask'
+#require 'rake/rdoctask'
+require 'rdoc/task'
 Rake::RDocTask.new do |rdoc|
-  version = File.exist?('VERSION') ? File.read('VERSION') : ""
+#  version = File.exist?('VERSION') ? File.read('VERSION') : ""
+  version = "5.2.1"
 
   rdoc.rdoc_dir = 'rdoc'
   rdoc.title = "konto_check #{version}"
-  rdoc.rdoc_files.include('README*')
+  rdoc.rdoc_files.include('README.textile')
   rdoc.rdoc_files.include('lib/**/*.rb')
+  rdoc.rdoc_files.include('ext/konto_check_raw/konto_check_raw_ruby.c')
 end

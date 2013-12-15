@@ -1,3 +1,65 @@
+important changes in version 5.2.1:
+   - fixed a bug in iban_gen() in ext/konto_check_raw/konto_check_raw_ruby.c
+
+important changes in version 5.2:
+   - new check method E1 implemented
+   - new IBAN rules 55 and 56 implemented
+   - changes for some IBAN rules (5, 10, 15, 20, 43 und 45, valid from 2013-12-09) implemented
+   - new function lut_blocks(), lut_suche_regel(), kto_check_regel(), kto_check_regel_dbg() implemented
+   - new functions KontoCheck:: bank_suche_* (no longer only in the KontoCheckRaw:: library)
+   - some minor changes (see file 0_history.txt)
+
+important changes in version 5.1:
+   - new function ci_check() for testing a Credit Identifier (Gläubiger-Identifikationsnummer)
+   - new version of IBAN rule 20 (Deutsche Bank)
+   - load missing LUT blocks for IBAN calculations automagically
+   - bug fixes in check methodss 13b, 63, C7
+   - various bug fixes
+
+important changes in version 5.0:
+   - implemented changes for IBAN rules, new IBAN rules 48-54
+   - implemented changes for check methods 57 and 95
+   - test in iban_check() if the given IBAN may contain errors due to
+     not considered IBAN rules etc.
+   - various bug fixes
+
+important changes in version 4.6:
+   - implemented IBAN rules for generation of IBAN and BIC
+   - changes in check methods 51 and 84 implemented
+
+(4.5 is a bug fix version only for perl)
+
+important changes in version 4.4:
+   - new check method E0 implemented
+   - changes in check methods C6 and D1 implemented
+   - bug fix in check method C6
+
+(4.3 is a bug fix version only for perl)
+
+important changes in version 4.2:
+   - fixed IBAN generation of flessa bank
+   - all search routines in KontoCheckRaw support the parameters search and
+     uniq; they are also available in KontoCheck::suche()
+   - some minor changes and bug fixes
+
+important changes in version 4.1:
+   - the version number is now that one of the C library; the ruby part is
+     complete
+   - new check method D9
+   - test for IBAN length of different countries
+   - some minor bug fixes in the underlying C library
+
+important changes in version 0.2.2:
+   - reworked documentation for KontoCheckRaw
+
+important changes in version 0.2.1:
+   - new search function bank_suche_volltext() and bank_suche_multiple()
+
+important changes in version 0.2.0:
+   - many more functions added
+   - documentation in rdoc and HTML format
+   - the underlying C library is now version 4.0, see changes there.
+
 important changes in version 0.0.3:
 
    - Function konto_check: the order of parameters changed:
