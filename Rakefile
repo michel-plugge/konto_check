@@ -1,6 +1,5 @@
 # Copyright (c) 2010 Peter Horn
 # Copyright (c) 2011 Jan Schwenzien, Michael Plugge
-# Copyright (c) 2013 Michael Plugge
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
@@ -32,7 +31,12 @@ begin
     gem.homepage = "http://kontocheck.sourceforge.net"
     gem.authors = ["Provideal Systems GmbH","Jan Schwenzien","Michael Plugge"]
     gem.add_development_dependency "thoughtbot-shoulda", ">= 0"
-    gem.version = "5.2.1"
+    gem.version = "5.3.0"
+    cert = "certs/gem-private_key.michel_plugge.pem"
+    if File.exist?(cert)
+       gem.signing_key = cert
+       gem.cert_chain = ["certs/gem-public_cert.michel_plugge.pem"]
+    end
     gem.extra_rdoc_files = [
       "LICENSE",
       "README.textile",
@@ -74,7 +78,7 @@ task :default => :test
 require 'rdoc/task'
 Rake::RDocTask.new do |rdoc|
 #  version = File.exist?('VERSION') ? File.read('VERSION') : ""
-  version = "5.2.1"
+  version = "5.3.0"
 
   rdoc.rdoc_dir = 'rdoc'
   rdoc.title = "konto_check #{version}"

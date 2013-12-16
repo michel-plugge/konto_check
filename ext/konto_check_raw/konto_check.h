@@ -47,67 +47,30 @@
 #ifndef KONTO_CHECK_H_INCLUDED
 #define KONTO_CHECK_H_INCLUDED
 
-/* 
- * ##########################################################################
- * # Hier eine Info der Flessabank zur IBAN-Berechnung (abgerufen 13.6.12   #
- * # von http://www.flessabank.de/aktuell.php?akt=149)                      #
- * #                                                                        #
- * # Aktuelles Bankleitzahl/BIC                                             #
- * #                                                                        #
- * # Im Rahmen eines umfassenden Konsolidierungsprojekts der Deutschen      #
- * # Bundesbank und der Europäischen Zentralbank werden immer mehr Filialen #
- * # der Deutschen Bundesbank geschlossen. Dabei wird auch die aktuelle     #
- * # Bankleitzahlenlogik für die Deutsche Bundesbank überarbeitet.          #
- * #                                                                        #
- * # Um als FLESSABANK dieser veränderten Situation gerecht zu werden,      #
- * # haben wir uns entschlossen, unsere Bankleitzahlenstruktur zu           #
- * # vereinfachen und auf die zentrale Bankleitzahl 793 301 11 umzustellen. #
- * # Ihre Kontonummern bleiben dabei unverändert gültig!                    #
- * #                                                                        #
- * # Betroffen sind hiervon folgende Bankleitzahlen:                        #
- * # 700 301 11 (Niederlassung München)                                     #
- * # 763 301 11 (Niederlassung Erlangen)                                    #
- * # 770 301 11 (Niederlassung Bamberg)                                     #
- * # 783 301 11 (Niederlassung Coburg)                                      #
- * # 840 301 11 (Niederlassung Meiningen)                                   #
- * #                                                                        #
- * # Für die Bereiche Internet-Banking und girocard ist bereits heute nur   #
- * # die Bankleitzahl 793 301 11 gültig. Auch Ihre IBAN (International Bank #
- * # Account Number = Internationale Kontonummer) wird ausschließlich mit   #
- * # der Bankleitzahl 793 301 11 erstellt. Wir teilen Ihnen diese zusammen  #
- * # mit unserem BIC (Bank Identifier Code = Bankkennung) auf jedem         #
- * # Kontoauszug mit.                                                       #
- * #                                                                        #
- * # Update zur Flessa-Bank (abgerufen 28.10.13): Die obigen Bankleitzahlen #
- * # haben in der aktuellen BLZ-Datei das Löschflag gesetzt und als         #
- * # Nachfolge-BLZ die 79330111 eingetragen. Damit erübrigt sich die        #
- * # Korrektur für die Flessa-Bank.                                         #
- * ##########################################################################
- */
-
-#define FLESSA_KORREKTUR 0
-
 /* IBAN-Regeln benutzen (gültig ab 3.6.2013) */
 #define USE_IBAN_RULES 1
 
    /* Änderungen der Prüfziffermethoden zum 9. September 2013 erzwingen
-    * (bei 0 werden sie abhängig vom Datum aktiviert).
+    * (bei 0 werden sie abhängig vom Datum aktiviert; aktuell nicht benutzt).
    */ 
 #define FORCE_AENDERUNGEN_2013_09 0
 
-   /* die neue Version der Regel 20 wird zum 9. Dezember in den offiziellen IBAN-Regeln veröffentlicht;
-    * die Bundesbank hat jedoch schon die Regelversion am 28. August veröffentlicht, mit der Bitte, sie
-    * möglichst schon zum 9. September einzusetzen. Durch die neue Regelversion werden die Fälle mit dem
-    * Rückgabewert IBAN_AMBIGUOUS_KTO komplett eliminiert.
+   /* Falls EXTRA_BLZ_REGEL auf 1 gesetzt wird, wird beim IBAN-Test
+    * unterschieden ob eine Regel ignoriert wurde, die nur eine BLZ ersetzt,
+    * oder eine andere Regel. Die Variante wenn nur eine BLZ ersetzt wird, wird
+    * von cKonto als richtig angesehen.
+    *
+    * Bei einer Nachfrage bei den 17 in Frage kommenden Banken bekam ich von
+    * zehn Banken Antworten. Von diesen sagte nur eine, daß (aktuell) die
+    * "alten" IBANs noch akzeptiert würden, die neun anderen sehen eine solche
+    * IBAN jedoch als fehlerhaft an. In konto_check wird daher das alte
+    * Verhalten beibehalten, solche IBANs als Fehler zu deklarieren. Wenn das
+    * folgende Makro auf 1 gesetzt wird, gibt es verschiedene Rückgabewerte für
+    * Regelverstöße mit nur BLZ-Ersetzung und andere Regeln. Auf diese Weise
+    * kann das Verhalten von cKonto in Benutzerprogrammen nachgebildet werden.
     */
 
-#define DB_NEUE_VERSION 1  /* bei 1: neue Version der DB-Regel benutzen */
-
-/* Debug-Version für iban_gen in Perl aktivieren (zur Ausgabe der benutzten
- * Prüfziffermethode in iban_gen()). Dies ist nur möglich, falls das Makro
- * DEBUG auf 1 gesetzt ist.
- */
-#define PERL_IBAN_DBG 1
+#define EXTRA_BLZ_REGEL 1
 
 /* Das Makro DEFAULT_ENCODING legt die Ausgabe-Kodierung für die Funktion
  * kto_check_retval2txt() und die Blocks Name, Kurzname und Ort aus der
@@ -542,7 +505,7 @@ extern const char *lut2_feld_namen[256];
 #define OK_HYPO_REQUIRES_KTO                    23
 #define OK_KTO_REPLACED_NO_PZ                   24
 #define OK_UNTERKONTO_ATTACHED                  25
-#line 321 "konto_check_h.lx"
+#line 284 "konto_check_h.lx"
 
 #define MAX_BLZ_CNT 30000  /* maximale Anzahl BLZ's in generate_lut() */
 
@@ -1022,6 +985,7 @@ DLL_EXPORT int lut_cleanup(void);
 
    /* IBAN-Sachen */
 DLL_EXPORT int ci_check(char *ci);
+DLL_EXPORT int bic_check(char *search_bic,int *cnt);
 DLL_EXPORT int iban_check(char *iban,int *retval);
 DLL_EXPORT const char *iban2bic(char *iban,int *retval,char *blz,char *kto);
 DLL_EXPORT char *iban_gen(char *kto,char *blz,int *retval);

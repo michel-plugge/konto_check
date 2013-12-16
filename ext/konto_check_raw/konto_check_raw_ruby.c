@@ -1721,6 +1721,7 @@ static VALUE iban2bic_rb(int argc,VALUE* argv,VALUE self)
  * *    22  (OK_INVALID_FOR_IBAN)     "ok; für IBAN ist (durch eine Regel) allerdings ein anderer BIC definiert"
  * *    24  (OK_KTO_REPLACED_NO_PZ)   "ok; die Kontonummer wurde ersetzt, die neue Kontonummer hat keine Prüfziffer"
  * *    25  (OK_UNTERKONTO_ATTACHED)  "ok; es wurde ein (weggelassenes) Unterkonto angefügt"
+ * 
  */
 static VALUE iban_gen_rb(int argc,VALUE* argv,VALUE self)
 {
@@ -1796,6 +1797,7 @@ static VALUE ci_check_rb(int argc,VALUE* argv,VALUE self)
  * *  -144  (INVALID_BIC_LENGTH)      "Die Länge des BIC muß genau 8 oder 11 Zeichen sein"
  * *     0  (FALSE)                   "falsch"
  * *     1  (OK)                      "ok"
+ *
  */
 static VALUE bic_check_rb(int argc,VALUE* argv,VALUE self)
 {
@@ -1947,11 +1949,11 @@ static VALUE ipi_check_rb(int argc,VALUE* argv,VALUE self)
  * 
  * Mögliche Rückgabewerte sind:
  * 
- *     -55  (LUT2_INDEX_OUT_OF_RANGE)    "Der Index für die Filiale ist ungültig"
- *     -53  (LUT2_BLZ_NOT_INITIALIZED)   "Das Feld BLZ wurde nicht initialisiert"
- *      -5  (INVALID_BLZ_LENGTH)         "die Bankleitzahl ist nicht achtstellig"
- *      -4  (INVALID_BLZ)                "die Bankleitzahl ist ungültig"
- *       1  (OK)                         "ok"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)    "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)   "Das Feld BLZ wurde nicht initialisiert"
+ * *   -5  (INVALID_BLZ_LENGTH)         "die Bankleitzahl ist nicht achtstellig"
+ * *   -4  (INVALID_BLZ)                "die Bankleitzahl ist ungültig"
+ * *    1  (OK)                         "ok"
  */
 static VALUE bank_valid(int argc,VALUE* argv,VALUE self)
 {
@@ -1975,12 +1977,13 @@ static VALUE bank_valid(int argc,VALUE* argv,VALUE self)
  * 
  * Mögliche Statuswerte sind:
  * 
- *     -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
- *     -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
- *     -52  (LUT2_FILIALEN_NOT_INITIALIZED) "Das Feld Filialen wurde nicht initialisiert"
- *      -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
- *      -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
- *       1  (OK)                            "ok"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -52  (LUT2_FILIALEN_NOT_INITIALIZED) "Das Feld Filialen wurde nicht initialisiert"
+ * *   -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
+ * *   -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
+ * *    1  (OK)                            "ok"
+ *
  */
 
 static VALUE bank_filialen(int argc,VALUE* argv,VALUE self)
@@ -2000,28 +2003,28 @@ static VALUE bank_filialen(int argc,VALUE* argv,VALUE self)
  * 
  * Dies ist eine Mammutfunktion, die alle vorhandenen Informationen über eine
  * Bank zurückliefert. Das Ergebnis ist ein Array mit den folgenden Komponenten:
- *    0:  Statuscode
- *    1:  Anzahl Filialen
- *    2:  Name
- *    3:  Kurzname
- *    4:  PLZ
- *    5:  Ort
- *    6:  PAN
- *    7:  BIC
- *    8:  Prüfziffer
- *    9:  Laufende Nr.
- *    10: Änderungs-Flag
- *    11: Löeschung-Flag
- *    12: Nachfolge-BLZ
+ * * 0:  Statuscode
+ * * 1:  Anzahl Filialen
+ * * 2:  Name
+ * * 3:  Kurzname
+ * * 4:  PLZ
+ * * 5:  Ort
+ * * 6:  PAN
+ * * 7:  BIC
+ * * 8:  Prüfziffer
+ * * 9:  Laufende Nr.
+ * * 10: Änderungs-Flag
+ * * 11: Löeschung-Flag
+ * * 12: Nachfolge-BLZ
  * 
  * Der Statuscode (Element 0) kann folgende Werte annehmen:
  * 
- *     -40  (LUT2_NOT_INITIALIZED)       "die Programmbibliothek wurde noch nicht initialisiert"
- *     -38  (LUT2_PARTIAL_OK)            "es wurden nicht alle Blocks geladen"
- *      -5  (INVALID_BLZ_LENGTH)         "die Bankleitzahl ist nicht achtstellig"
- *      -4  (INVALID_BLZ)                "die Bankleitzahl ist ungültig"
- *       1  (OK)                         "ok"
- *
+ * *  -40  (LUT2_NOT_INITIALIZED)       "die Programmbibliothek wurde noch nicht initialisiert"
+ * *  -38  (LUT2_PARTIAL_OK)            "es wurden nicht alle Blocks geladen"
+ * *   -5  (INVALID_BLZ_LENGTH)         "die Bankleitzahl ist nicht achtstellig"
+ * *   -4  (INVALID_BLZ)                "die Bankleitzahl ist ungültig"
+ * *    1  (OK)                         "ok"
+ * *
  * Anmerkung: Falls der Statuscode LUT2_PARTIAL_OK ist, wurden bei der
  * Initialisierung nicht alle Blocks geladen (oder es sind nicht alle verfügbar);
  * die entsprechenden Elemente haben dann den Wert nil.
@@ -2076,12 +2079,12 @@ static VALUE bank_alles(int argc,VALUE* argv,VALUE self)
  * 
  * Mögliche Statuscodes:
  * 
- *     -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
- *     -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
- *     -51  (LUT2_NAME_NOT_INITIALIZED)     "Das Feld Bankname wurde nicht initialisiert"
- *      -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
- *      -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
- *       1  (OK)                            "ok"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -51  (LUT2_NAME_NOT_INITIALIZED)     "Das Feld Bankname wurde nicht initialisiert"
+ * *   -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
+ * *   -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
+ * *    1  (OK)                            "ok"
  */
 static VALUE bank_name(int argc,VALUE* argv,VALUE self)
 {
@@ -2105,12 +2108,12 @@ static VALUE bank_name(int argc,VALUE* argv,VALUE self)
  * 
  * Mögliche Statuscodes:
  * 
- *     -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
- *     -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
- *     -48  (LUT2_NAME_KURZ_NOT_INITIALIZED) "Das Feld Kurzname wurde nicht initialisiert"
- *      -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
- *      -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
- *       1  (OK)                            "ok"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -48  (LUT2_NAME_KURZ_NOT_INITIALIZED) "Das Feld Kurzname wurde nicht initialisiert"
+ * *   -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
+ * *   -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
+ * *    1  (OK)                            "ok"
  */
 static VALUE bank_name_kurz(int argc,VALUE* argv,VALUE self)
 {
@@ -2136,12 +2139,12 @@ static VALUE bank_name_kurz(int argc,VALUE* argv,VALUE self)
  * 
  * Mögliche Statuscodes:
  *
- *     -53  (LUT2_BLZ_NOT_INITIALIZED)   "Das Feld BLZ wurde nicht initialisiert"
- *     -49  (LUT2_ORT_NOT_INITIALIZED)   "Das Feld Ort wurde nicht initialisiert"
- *     -55  (LUT2_INDEX_OUT_OF_RANGE)    "Der Index für die Filiale ist ungültig"
- *      -5  (INVALID_BLZ_LENGTH)         "die Bankleitzahl ist nicht achtstellig"
- *      -4  (INVALID_BLZ)                "die Bankleitzahl ist ungültig"
- *       1  (OK)                         "ok"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)   "Das Feld BLZ wurde nicht initialisiert"
+ * *  -49  (LUT2_ORT_NOT_INITIALIZED)   "Das Feld Ort wurde nicht initialisiert"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)    "Der Index für die Filiale ist ungültig"
+ * *   -5  (INVALID_BLZ_LENGTH)         "die Bankleitzahl ist nicht achtstellig"
+ * *   -4  (INVALID_BLZ)                "die Bankleitzahl ist ungültig"
+ * *    1  (OK)                         "ok"
  */
 static VALUE bank_ort(int argc,VALUE* argv,VALUE self)
 {
@@ -2166,12 +2169,12 @@ static VALUE bank_ort(int argc,VALUE* argv,VALUE self)
  * 
  * Mögliche Statuscodes:
  * 
- *     -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
- *     -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
- *     -50  (LUT2_PLZ_NOT_INITIALIZED)      "Das Feld PLZ wurde nicht initialisiert"
- *      -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
- *      -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
- *       1  (OK)                            "ok"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -50  (LUT2_PLZ_NOT_INITIALIZED)      "Das Feld PLZ wurde nicht initialisiert"
+ * *   -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
+ * *   -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
+ * *    1  (OK)                            "ok"
  */
 static VALUE bank_plz(int argc,VALUE* argv,VALUE self)
 {
@@ -2196,12 +2199,12 @@ static VALUE bank_plz(int argc,VALUE* argv,VALUE self)
  * 
  * Mögliche Statuscodes:
  * 
- *     -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
- *     -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
- *     -45  (LUT2_PZ_NOT_INITIALIZED)       "Das Feld Prüfziffer wurde nicht initialisiert"
- *      -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
- *      -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
- *       1  (OK)                            "ok"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -45  (LUT2_PZ_NOT_INITIALIZED)       "Das Feld Prüfziffer wurde nicht initialisiert"
+ * *   -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
+ * *   -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
+ * *    1  (OK)                            "ok"
  */
 static VALUE bank_pz(int argc,VALUE* argv,VALUE self)
 {
@@ -2225,12 +2228,12 @@ static VALUE bank_pz(int argc,VALUE* argv,VALUE self)
  * 
  * Mögliche Statuscodes:
  * 
- *     -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
- *     -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
- *     -46  (LUT2_BIC_NOT_INITIALIZED)      "Das Feld BIC wurde nicht initialisiert"
- *      -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
- *      -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
- *       1  (OK)                            "ok"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -46  (LUT2_BIC_NOT_INITIALIZED)      "Das Feld BIC wurde nicht initialisiert"
+ * *   -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
+ * *   -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
+ * *    1  (OK)                            "ok"
  */
 static VALUE bank_bic(int argc,VALUE* argv,VALUE self)
 {
@@ -2256,12 +2259,12 @@ static VALUE bank_bic(int argc,VALUE* argv,VALUE self)
  * 
  * Mögliche Statuscodes:
  * 
- *     -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
- *     -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
- *     -43  (LUT2_AENDERUNG_NOT_INITIALIZED) "Das Feld Änderung wurde nicht initialisiert"
- *      -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
- *      -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
- *       1  (OK)                            "ok"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -43  (LUT2_AENDERUNG_NOT_INITIALIZED) "Das Feld Änderung wurde nicht initialisiert"
+ * *   -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
+ * *   -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
+ * *    1  (OK)                            "ok"
  */
 static VALUE bank_aenderung(int argc,VALUE* argv,VALUE self)
 {
@@ -2286,12 +2289,12 @@ static VALUE bank_aenderung(int argc,VALUE* argv,VALUE self)
  * 
  * Mögliche Statuscodes:
  * 
- *     -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
- *     -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
- *     -42  (LUT2_LOESCHUNG_NOT_INITIALIZED) "Das Feld Löschung wurde nicht initialisiert"
- *      -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
- *      -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
- *       1  (OK)                            "ok"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -42  (LUT2_LOESCHUNG_NOT_INITIALIZED) "Das Feld Löschung wurde nicht initialisiert"
+ * *   -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
+ * *   -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
+ * *    1  (OK)                            "ok"
  */
 static VALUE bank_loeschung(int argc,VALUE* argv,VALUE self)
 {
@@ -2315,12 +2318,12 @@ static VALUE bank_loeschung(int argc,VALUE* argv,VALUE self)
  * 
  * Mögliche Statuscodes:
  * 
- *     -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
- *     -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
- *     -41  (LUT2_NACHFOLGE_BLZ_NOT_INITIALIZED) "Das Feld Nachfolge-BLZ wurde nicht initialisiert"
- *      -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
- *      -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
- *       1  (OK)                            "ok"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -41  (LUT2_NACHFOLGE_BLZ_NOT_INITIALIZED) "Das Feld Nachfolge-BLZ wurde nicht initialisiert"
+ * *   -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
+ * *   -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
+ * *    1  (OK)                            "ok"
  */
 static VALUE bank_nachfolge_blz(int argc,VALUE* argv,VALUE self)
 {
@@ -2343,12 +2346,12 @@ static VALUE bank_nachfolge_blz(int argc,VALUE* argv,VALUE self)
  * 
  * Mögliche Statuscodes:
  * 
- *     -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
- *     -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
- *     -47  (LUT2_PAN_NOT_INITIALIZED)      "Das Feld PAN wurde nicht initialisiert"
- *      -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
- *      -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
- *       1  (OK)                            "ok"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -47  (LUT2_PAN_NOT_INITIALIZED)      "Das Feld PAN wurde nicht initialisiert"
+ * *   -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
+ * *   -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
+ * *    1  (OK)                            "ok"
  */
 static VALUE bank_pan(int argc,VALUE* argv,VALUE self)
 {
@@ -2375,12 +2378,12 @@ static VALUE bank_pan(int argc,VALUE* argv,VALUE self)
  * 
  * Possible return values (and short description):
  * 
- *     -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
- *     -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
- *     -44  (LUT2_NR_NOT_INITIALIZED)       "Das Feld NR wurde nicht initialisiert"
- *      -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
- *      -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
- *       1  (OK)                            "ok"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -44  (LUT2_NR_NOT_INITIALIZED)       "Das Feld NR wurde nicht initialisiert"
+ * *   -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
+ * *   -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
+ * *    1  (OK)                            "ok"
  */
 static VALUE bank_nr(int argc,VALUE* argv,VALUE self)
 {
@@ -2550,12 +2553,12 @@ static VALUE bank_suche_int(int argc,VALUE* argv,VALUE self,int (*suchfkt_s)(cha
  *
  * Mögliche Statuscodes:
  *
- *     -78  (KEY_NOT_FOUND)              "Die Suche lieferte kein Ergebnis"
- *     -70  (LUT1_FILE_USED)             "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
- *     -46  (LUT2_BIC_NOT_INITIALIZED)   "Das Feld BIC wurde nicht initialisiert"
- *     -40  (LUT2_NOT_INITIALIZED)       "die Programmbibliothek wurde noch nicht initialisiert"
- *      -9  (ERROR_MALLOC)               "kann keinen Speicher allokieren"
- *       1  (OK)                         "ok"
+ * *  -78  (KEY_NOT_FOUND)              "Die Suche lieferte kein Ergebnis"
+ * *  -70  (LUT1_FILE_USED)             "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -46  (LUT2_BIC_NOT_INITIALIZED)   "Das Feld BIC wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)       "die Programmbibliothek wurde noch nicht initialisiert"
+ * *   -9  (ERROR_MALLOC)               "kann keinen Speicher allokieren"
+ * *    1  (OK)                         "ok"
  */
 static VALUE bank_suche_bic(int argc,VALUE* argv,VALUE self)
 {
@@ -2577,12 +2580,12 @@ static VALUE bank_suche_bic(int argc,VALUE* argv,VALUE self)
  *
  * Mögliche Statuscodes:
  *
- *     -78  (KEY_NOT_FOUND)              "Die Suche lieferte kein Ergebnis"
- *     -70  (LUT1_FILE_USED)             "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
- *     -51  (LUT2_NAME_NOT_INITIALIZED)  "Das Feld Bankname wurde nicht initialisiert"
- *     -40  (LUT2_NOT_INITIALIZED)       "die Programmbibliothek wurde noch nicht initialisiert"
- *      -9  (ERROR_MALLOC)               "kann keinen Speicher allokieren"
- *       1  (OK)                         "ok"
+ * *  -78  (KEY_NOT_FOUND)              "Die Suche lieferte kein Ergebnis"
+ * *  -70  (LUT1_FILE_USED)             "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -51  (LUT2_NAME_NOT_INITIALIZED)  "Das Feld Bankname wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)       "die Programmbibliothek wurde noch nicht initialisiert"
+ * *   -9  (ERROR_MALLOC)               "kann keinen Speicher allokieren"
+ * *    1  (OK)                         "ok"
  */
 static VALUE bank_suche_namen(int argc,VALUE* argv,VALUE self)
 {
@@ -2604,12 +2607,12 @@ static VALUE bank_suche_namen(int argc,VALUE* argv,VALUE self)
  *
  * Mögliche Statuscodes:
  *
- *     -78  (KEY_NOT_FOUND)              "Die Suche lieferte kein Ergebnis"
- *     -70  (LUT1_FILE_USED)             "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
- *     -48  (LUT2_NAME_KURZ_NOT_INITIALIZED) "Das Feld Kurzname wurde nicht initialisiert"
- *     -40  (LUT2_NOT_INITIALIZED)       "die Programmbibliothek wurde noch nicht initialisiert"
- *      -9  (ERROR_MALLOC)               "kann keinen Speicher allokieren"
- *       1  (OK)                         "ok"
+ * *  -78  (KEY_NOT_FOUND)              "Die Suche lieferte kein Ergebnis"
+ * *  -70  (LUT1_FILE_USED)             "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -48  (LUT2_NAME_KURZ_NOT_INITIALIZED) "Das Feld Kurzname wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)       "die Programmbibliothek wurde noch nicht initialisiert"
+ * *   -9  (ERROR_MALLOC)               "kann keinen Speicher allokieren"
+ * *    1  (OK)                         "ok"
  */
 static VALUE bank_suche_namen_kurz(int argc,VALUE* argv,VALUE self)
 {
@@ -2632,12 +2635,12 @@ static VALUE bank_suche_namen_kurz(int argc,VALUE* argv,VALUE self)
  *
  * Mögliche Statuscodes:
  *
- *     -78  (KEY_NOT_FOUND)              "Die Suche lieferte kein Ergebnis"
- *     -70  (LUT1_FILE_USED)             "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
- *     -50  (LUT2_PLZ_NOT_INITIALIZED)   "Das Feld PLZ wurde nicht initialisiert"
- *     -40  (LUT2_NOT_INITIALIZED)       "die Programmbibliothek wurde noch nicht initialisiert"
- *      -9  (ERROR_MALLOC)               "kann keinen Speicher allokieren"
- *       1  (OK)                         "ok"
+ * *  -78  (KEY_NOT_FOUND)              "Die Suche lieferte kein Ergebnis"
+ * *  -70  (LUT1_FILE_USED)             "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -50  (LUT2_PLZ_NOT_INITIALIZED)   "Das Feld PLZ wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)       "die Programmbibliothek wurde noch nicht initialisiert"
+ * *   -9  (ERROR_MALLOC)               "kann keinen Speicher allokieren"
+ * *    1  (OK)                         "ok"
  */
 static VALUE bank_suche_plz(int argc,VALUE* argv,VALUE self)
 {
@@ -2660,12 +2663,12 @@ static VALUE bank_suche_plz(int argc,VALUE* argv,VALUE self)
  *
  * Mögliche Statuscodes:
  *
- *     -78  (KEY_NOT_FOUND)              "Die Suche lieferte kein Ergebnis"
- *     -70  (LUT1_FILE_USED)             "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
- *     -45  (LUT2_PZ_NOT_INITIALIZED)    "Das Feld Prüfziffer wurde nicht initialisiert"
- *     -40  (LUT2_NOT_INITIALIZED)       "die Programmbibliothek wurde noch nicht initialisiert"
- *      -9  (ERROR_MALLOC)               "kann keinen Speicher allokieren"
- *       1  (OK)                         "ok"
+ * *  -78  (KEY_NOT_FOUND)              "Die Suche lieferte kein Ergebnis"
+ * *  -70  (LUT1_FILE_USED)             "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -45  (LUT2_PZ_NOT_INITIALIZED)    "Das Feld Prüfziffer wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)       "die Programmbibliothek wurde noch nicht initialisiert"
+ * *   -9  (ERROR_MALLOC)               "kann keinen Speicher allokieren"
+ * *    1  (OK)                         "ok"
  */
 static VALUE bank_suche_pz(int argc,VALUE* argv,VALUE self)
 {
@@ -2688,12 +2691,12 @@ static VALUE bank_suche_pz(int argc,VALUE* argv,VALUE self)
  *
  * Mögliche Statuscodes:
  *
- *     -78  (KEY_NOT_FOUND)              "Die Suche lieferte kein Ergebnis"
- *     -70  (LUT1_FILE_USED)             "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
- *     -53  (LUT2_BLZ_NOT_INITIALIZED)   "Das Feld BLZ wurde nicht initialisiert"
- *     -40  (LUT2_NOT_INITIALIZED)       "die Programmbibliothek wurde noch nicht initialisiert"
- *      -9  (ERROR_MALLOC)               "kann keinen Speicher allokieren"
- *       1  (OK)                         "ok"
+ * *  -78  (KEY_NOT_FOUND)              "Die Suche lieferte kein Ergebnis"
+ * *  -70  (LUT1_FILE_USED)             "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)   "Das Feld BLZ wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)       "die Programmbibliothek wurde noch nicht initialisiert"
+ * *   -9  (ERROR_MALLOC)               "kann keinen Speicher allokieren"
+ * *    1  (OK)                         "ok"
  */
 static VALUE bank_suche_blz(int argc,VALUE* argv,VALUE self)
 {
@@ -2715,12 +2718,12 @@ static VALUE bank_suche_blz(int argc,VALUE* argv,VALUE self)
  *
  * Mögliche Statuscodes:
  *
- *     -78  (KEY_NOT_FOUND)              "Die Suche lieferte kein Ergebnis"
- *     -70  (LUT1_FILE_USED)             "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
- *     -49  (LUT2_ORT_NOT_INITIALIZED)   "Das Feld Ort wurde nicht initialisiert"
- *     -40  (LUT2_NOT_INITIALIZED)       "die Programmbibliothek wurde noch nicht initialisiert"
- *      -9  (ERROR_MALLOC)               "kann keinen Speicher allokieren"
- *       1  (OK)                         "ok"
+ * *  -78  (KEY_NOT_FOUND)              "Die Suche lieferte kein Ergebnis"
+ * *  -70  (LUT1_FILE_USED)             "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -49  (LUT2_ORT_NOT_INITIALIZED)   "Das Feld Ort wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)       "die Programmbibliothek wurde noch nicht initialisiert"
+ * *   -9  (ERROR_MALLOC)               "kann keinen Speicher allokieren"
+ * *    1  (OK)                         "ok"
  */
 static VALUE bank_suche_ort(int argc,VALUE* argv,VALUE self)
 {
@@ -2743,12 +2746,12 @@ static VALUE bank_suche_ort(int argc,VALUE* argv,VALUE self)
  *
  * Mögliche Statuscodes:
  *
- *     -78  (KEY_NOT_FOUND)              "Die Suche lieferte kein Ergebnis"
- *     -70  (LUT1_FILE_USED)             "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
- *     -45  (LUT2_PZ_NOT_INITIALIZED)    "Das Feld Prüfziffer wurde nicht initialisiert"
- *     -40  (LUT2_NOT_INITIALIZED)       "die Programmbibliothek wurde noch nicht initialisiert"
- *      -9  (ERROR_MALLOC)               "kann keinen Speicher allokieren"
- *       1  (OK)                         "ok"
+ * *  -78  (KEY_NOT_FOUND)              "Die Suche lieferte kein Ergebnis"
+ * *  -70  (LUT1_FILE_USED)             "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -45  (LUT2_PZ_NOT_INITIALIZED)    "Das Feld Prüfziffer wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)       "die Programmbibliothek wurde noch nicht initialisiert"
+ * *   -9  (ERROR_MALLOC)               "kann keinen Speicher allokieren"
+ * *    1  (OK)                         "ok"
  */
 static VALUE bank_suche_regel(int argc,VALUE* argv,VALUE self)
 {
@@ -2765,21 +2768,21 @@ static VALUE bank_suche_regel(int argc,VALUE* argv,VALUE self)
  * LUT2_VOLLTEXT_SINGLE_WORD_ONLY zurückgegeben. Die Rückgabe ist ein Array mit
  * fünf Elementen:
  *
- *    0. Das erste Element ist ein Array mit den gefundenen Suchworten
- *    1. Das zweite Element ist ein Array mit den Bankleitzahlen, die auf das Suchmuster passen
- *    2. Das dritte Element ist ein Array mit den Zweigstellen-Indizes der gefundenen Bankleitzahlen
- *    3. das vierte Element ist der Statuscode (s.u.)
- *    4. das fünfte Element gibt die Anzahl der gefundenen Banken zurück.
+ * *  Das erste Element ist ein Array mit den gefundenen Suchworten
+ * *  Das zweite Element ist ein Array mit den Bankleitzahlen, die auf das Suchmuster passen
+ * *  Das dritte Element ist ein Array mit den Zweigstellen-Indizes der gefundenen Bankleitzahlen
+ * *  das vierte Element ist der Statuscode (s.u.)
+ * *  das fünfte Element gibt die Anzahl der gefundenen Banken zurück.
  *
  * Mögliche Statuscodes:
  *
- *    -118  (LUT2_VOLLTEXT_SINGLE_WORD_ONLY) "Die Volltextsuche sucht jeweils nur ein einzelnes Wort; benutzen Sie bank_suche_multiple() zur Suche nach mehreren Worten"
- *    -114  (LUT2_VOLLTEXT_NOT_INITIALIZED)  "Das Feld Volltext wurde nicht initialisiert"
- *     -78  (KEY_NOT_FOUND)              "Die Suche lieferte kein Ergebnis"
- *     -70  (LUT1_FILE_USED)             "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
- *     -40  (LUT2_NOT_INITIALIZED)       "die Programmbibliothek wurde noch nicht initialisiert"
- *      -9  (ERROR_MALLOC)               "kann keinen Speicher allokieren"
- *       1  (OK)                         "ok"
+ * *  -118  (LUT2_VOLLTEXT_SINGLE_WORD_ONLY) "Die Volltextsuche sucht jeweils nur ein einzelnes Wort; benutzen Sie bank_suche_multiple() zur Suche nach mehreren Worten"
+ * *  -114  (LUT2_VOLLTEXT_NOT_INITIALIZED)  "Das Feld Volltext wurde nicht initialisiert"
+ * *   -78  (KEY_NOT_FOUND)              "Die Suche lieferte kein Ergebnis"
+ * *   -70  (LUT1_FILE_USED)             "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *   -40  (LUT2_NOT_INITIALIZED)       "die Programmbibliothek wurde noch nicht initialisiert"
+ * *    -9  (ERROR_MALLOC)               "kann keinen Speicher allokieren"
+ * *     1  (OK)                         "ok"
  */
 static VALUE bank_suche_volltext(int argc,VALUE* argv,VALUE self)
 {
@@ -3107,6 +3110,7 @@ void Init_konto_check_raw()
    rb_define_module_function(KontoCheck,"retval2utf8",retval2utf8_rb,1);
    rb_define_module_function(KontoCheck,"generate_lutfile",generate_lutfile_rb,-1);
    rb_define_module_function(KontoCheck,"ci_check",ci_check_rb,1);
+   rb_define_module_function(KontoCheck,"bic_check",bic_check_rb,1);
    rb_define_module_function(KontoCheck,"iban_check",iban_check_rb,-1);
    rb_define_module_function(KontoCheck,"iban2bic",iban2bic_rb,-1);
    rb_define_module_function(KontoCheck,"iban_gen",iban_gen_rb,-1);
@@ -3130,7 +3134,7 @@ void Init_konto_check_raw()
    rb_define_const(KontoCheck,"BIC_ONLY_GERMAN",INT2FIX(BIC_ONLY_GERMAN));
       /* (-144) Die Länge des BIC muß genau 8 oder 11 Zeichen sein */
    rb_define_const(KontoCheck,"INVALID_BIC_LENGTH",INT2FIX(INVALID_BIC_LENGTH));
-      /* (-143) Die IBAN-Prüfsumme stimmt, es wurde allerdings eine IBAN-Regel nicht beachtet (BLZ nicht ersetzt, wahrscheinlich falsch) */
+      /* (-143) Die IBAN-Prüfsumme stimmt, die BLZ sollte aber durch eine zentrale BLZ ersetzt werden. Die Richtigkeit der IBAN kann nur mit einer Anfrage bei der Bank ermittelt werden */
    rb_define_const(KontoCheck,"IBAN_CHKSUM_OK_RULE_IGNORED_BLZ",INT2FIX(IBAN_CHKSUM_OK_RULE_IGNORED_BLZ));
       /* (-142) Die IBAN-Prüfsumme stimmt, konto_check wurde jedoch noch nicht initialisiert (Kontoprüfung nicht möglich) */
    rb_define_const(KontoCheck,"IBAN_CHKSUM_OK_KC_NOT_INITIALIZED",INT2FIX(IBAN_CHKSUM_OK_KC_NOT_INITIALIZED));
@@ -3154,7 +3158,7 @@ void Init_konto_check_raw()
    rb_define_const(KontoCheck,"BLZ_MARKED_AS_DELETED",INT2FIX(BLZ_MARKED_AS_DELETED));
       /* (-132) Die IBAN-Prüfsumme stimmt, es gibt allerdings einen Fehler in der eigenen IBAN-Bestimmung (wahrscheinlich falsch) */
    rb_define_const(KontoCheck,"IBAN_CHKSUM_OK_SOMETHING_WRONG",INT2FIX(IBAN_CHKSUM_OK_SOMETHING_WRONG));
-      /* (-131) Die IBAN-Prüfsumme stimmt, eine IBAN-Berechnung ist allerdings nicht erlaubt (wahrscheinlich falsch) */
+      /* (-131) Die IBAN-Prüfsumme stimmt. Die Bank gibt IBANs nach nicht veröffentlichten Regeln heraus, die Richtigkeit der IBAN kann nur mit einer Anfrage bei der Bank ermittelt werden */
    rb_define_const(KontoCheck,"IBAN_CHKSUM_OK_NO_IBAN_CALCULATION",INT2FIX(IBAN_CHKSUM_OK_NO_IBAN_CALCULATION));
       /* (-130) Die IBAN-Prüfsumme stimmt, es wurde allerdings eine IBAN-Regel nicht beachtet (wahrscheinlich falsch) */
    rb_define_const(KontoCheck,"IBAN_CHKSUM_OK_RULE_IGNORED",INT2FIX(IBAN_CHKSUM_OK_RULE_IGNORED));
