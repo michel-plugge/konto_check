@@ -3109,8 +3109,8 @@ void Init_konto_check_raw()
    rb_define_module_function(KontoCheck,"retval2html",retval2html_rb,1);
    rb_define_module_function(KontoCheck,"retval2utf8",retval2utf8_rb,1);
    rb_define_module_function(KontoCheck,"generate_lutfile",generate_lutfile_rb,-1);
-   rb_define_module_function(KontoCheck,"ci_check",ci_check_rb,1);
-   rb_define_module_function(KontoCheck,"bic_check",bic_check_rb,1);
+   rb_define_module_function(KontoCheck,"ci_check",ci_check_rb,-1);
+   rb_define_module_function(KontoCheck,"bic_check",bic_check_rb,-1);
    rb_define_module_function(KontoCheck,"iban_check",iban_check_rb,-1);
    rb_define_module_function(KontoCheck,"iban2bic",iban2bic_rb,-1);
    rb_define_module_function(KontoCheck,"iban_gen",iban_gen_rb,-1);
