@@ -4,9 +4,90 @@
 ##################################################################################
 #                                                                                #
 # Autor             : Michael Plugge <m.plugge@hs-mannheim.de>                   #
-# Version           : 5.2 (final)                                                #
-# Datum             : 11.11.2013                                                 #
+# Version           : 5.3 (final)                                                #
+# Datum             : 04.03.2014                                                 #
 ##################################################################################
+
+##################################################################################
+###                       04.03.14 Version 5.3 (final)                         ###
+##################################################################################
+
+ - neue IBAN-Regel 57 implementiert
+
+ - Änderungen in den IBAN-Regeln 54 und 56 implementiert, Klarstellung in
+   IBAN-Regel 42 (Deutsche Bundesbank)
+
+ - Änderung in der Prüfzifferberechnungsmethode 66 implementiert
+
+ - Es ist eine Suche nach den BICs der Hauptstellen implementiert
+
+ - In der LUT-Datei gibt es einen neuen Indexblock über die BICs der Hauptstellen
+
+ - Die Daten der Bundesbank-Datei die mit den Funktionen lut_name(), lut_ort()...
+   abgefragt werden, können jetzt auch für BICS und IBANs abgefragt werden (s.u.)
+
+ - Viele Vergleiche in den IBAN- und BIC-Funktionen die mit strcmp gemacht wurden,
+   wurden auf strcasecmp() umgestellt, so daß die Groß/Kleinschreibung bei IBANs
+   und BICs komplett ignoriert wird.
+
+ - Die  Funktion pz2str() enthält nur noch die wirklich definierten
+   Prüfziffermethoden, dafür jedoch auch die Untermethoden
+
+ - Die Ruby-Dokumentation wird jetzt über yardoc generiert
+
+ - kleinere Änderungen im Ruby-Port
+
+ - Fehler in mini1.vb behoben
+
+ - einige kleinere Bugs behoben
+
+ - neue Funktionen (diese sind momentan erst im C- und PHP-Port
+   implementiert, in den anderen Sprachen kommen sie spätestens in der nächsten Version):
+
+     - lut_suche_bic_h(): Die Funktion entspricht weitgehend der Funktion lut_suche_bic();
+       für die Nebenstellen wird bei dieser Funktion allerdings der BIC der Hauptstelle
+       benutzt.
+
+     - lut_bic_h(char*,int,int*) und lut_bic_hi(int,int,int*): Diese Funktionen geben den
+       BIC der jeweiligen Hauptstelle zurück
+
+     - lut_blz_i(int,int): eine vergessene Funktion, analog zu lut_blz() mit Integerparameter
+       für die BLZ
+
+     - bic_info(char*,int,int*,int*): Diese Funktion sucht Banken mit einem bestimmten BIC
+       und gibt die gefundene Anzahl sowie den Startindex in den internen Arrays zurück. Sie
+       ist für die Funktionsgruppe biq_* (s.u.) gedacht, falls Werte für mehrere Filialen
+       einer Bank bestimmt werden sollen.
+
+     -  bic_aenderung(char*,int,int,int*), bic_loeschung(), bic_iban_regel(),
+        bic_nachfolge_blz(), bic_nr(), bic_pan(), bic_plz(), bic_pz(), bic_bic(), bic_bic_h(),
+        bic_name(), bic_name_kurz(), bic_ort():
+           
+        Die Funktionen dieser Gruppe entsprechen den Funktionen lut_*(), nur
+        daß statt einer BLZ ein BIC angegeben wird.
+
+     - biq_aenderung(int,int*), biq_loeschung(), biq_iban_regel(), biq_nachfolge_blz(),
+        biq_nr(), biq_pan(), biq_plz(), biq_pz(), biq_bic(), biq_bic_h(), biq_name(),
+        biq_name_kurz(), biq_ort() (das q steht für quick):
+   
+        diese Funktionen entsprechen denen der Gruppe bic_*(); statt des BIC
+        wird allerdings ein Index angegeben, der über die Funktion bic_info()
+        bestimmt wird. Der Parameter mode fehlt in dieser Gruppe; er wird auch bei
+        bic_info() spezifiziert.
+
+     - iban_aenderung(), iban_loeschung(), iban_iban_regel(), iban_nachfolge_blz(),
+       iban_nr(), iban_pan(), iban_plz(), iban_pz(), iban_bic(), iban_bic_h(),
+       iban_name(), iban_name_kurz(), iban_ort():
+
+       nochmal eine Gruppe mit gleicher Funktionalität, nur wird statt eines
+       BIC eine IBAN zur Spezifizierung der Banken benutzt. Bei der Banksuche
+       per BIC ist das Problem, daß oft große Gruppen einen BIC teilen (s. z.B.
+       die Postbank), und die Filialinformation (z.B. Ort o.ä.) komplett
+       verlorengeht. Außerdem sind in der Bundesbankdatei nicht alle
+       Filialcodes enthalten, so daß die bic_*() Funktionen manchmal nur mit
+       dem Modus 0 fündig werden (dabei wird im letzten Schritt der Filialteil
+       durch XXX ersetzt; Beispiel ist wieder die Postbank).
+
 
 ##################################################################################
 ###                       11.11.13 Version 5.2 (final)                         ###

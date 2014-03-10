@@ -4,10 +4,10 @@ Check whether a certain bic/account-no-combination can possibly be valid for a G
 retrieve certain infos from the blz file and search for banks matching different criteria,
 convert bic/account into IBAN and BIC, test IBAN or BIC...
 
-It uses the C library konto_check (see http://sourceforge.net/projects/kontocheck/) by
+It uses the C library konto_check available at <a href="http://sourceforge.net/projects/kontocheck" target="_blank">sourceforge</a> by
 Michael Plugge.
 
-h2. Example
+h2. A few Examples
 
 An example tends to tell more than a 1000 words:
 
@@ -15,23 +15,73 @@ An example tends to tell more than a 1000 words:
 >> require "konto_check"
 true
 
+# initialize the library
 >> KontoCheck::init
 1
 
->> KontoCheck::konto_check("52001","52250030")
+# use UTF-8 encoding
+>> KontoCheck::encoding 'u'
+2
+
+# check a bic/account combination
+>> KontoCheck::konto_check("52250030","52001")
 true
 
+# retrieve a bank name
 >> KontoCheck::bank_name("10010010")
 "Postbank"
 
+# search banks with "eifel"
+>> eifel=KontoCheckRaw::bank_suche_volltext 'eifel'
+[["Eifel"],
+ [37069303, 37069342, 37069642, 37069720, 39050000, 39550110, 57069067, 57069144, 57650010, 57751310, 57761591, 58650030, 58651240, 58660101, 58661901, 58668818, 58691500, 58751230, 58760954],
+ [2, 0, 1, 0, 6, 14, 2, 2, 1, 13, 18, 6, 2, 2, 1, 0, 0, 0, 1],
+ 1, 19]
+# show some resuts
+>> b=eifel[1]; f=eifel[2]; maxidx=eifel[4]-1
+>> (10..maxidx).each{|i|  printf("%s (Fil.%2d) %s, %s\n",b[i],f[i],KontoCheck::bank_name(b[i],f[i]),KontoCheck::bank_ort(b[i],f[i])) }
+57761591 (Fil.18) Volksbank RheinAhrEifel, Uersfeld, Eifel
+58650030 (Fil. 6) Kreissparkasse Bitburg-Prüm, Bettingen, Eifel
+58651240 (Fil. 2) Kreissparkasse Vulkaneifel, Hillesheim, Eifel
+58660101 (Fil. 2) Volksbank Bitburg, Bettingen, Eifel
+58661901 (Fil. 1) Raiffeisenbank Westeifel, Burbach, Eifel
+58668818 (Fil. 0) Raiffeisenbank Neuerburg-Land -alt-, Neuerburg, Eifel
+58691500 (Fil. 0) Volksbank Eifel Mitte, Prüm
+58751230 (Fil. 0) Sparkasse Mittelmosel-Eifel Mosel Hunsrück, Bernkastel-Kues
+58760954 (Fil. 1) Vereinigte Volksbank Raiffeisenbank, Landscheid, Eifel
+
+# test an IBAN
+>> KontoCheck::iban_check "DE03683515573047232594"
+1
+
+# check of an invalid IBAN with correct IBAN checksum
+>> KontoCheck::retval2txt KontoCheck::iban_check 'DE80200500000000101105'
+"Die IBAN-Prüfsumme stimmt, es wurde allerdings eine IBAN-Regel nicht beachtet (wahrscheinlich falsch)"
+# extract bic and account from IBAN
+>> KontoCheckRaw::iban2bic  'DE80200500000000101105'
+["HSHNDEHHXXX", -130, "20050000", "0000101105"]
+# generate the IBAN again using IBAN rules
+>> KontoCheckRaw::iban_gen  "20050000", "0000101105"
+["DE32210500000101105000", "DE32 2105 0000 0101 1050 00", 20, "HSHNDEHHXXX", "21050000", "0101105000", 36]
+
+# generate an IBAN using the low-level interface KontoCheckRaw::
 >> KontoCheckRaw::iban_gen('68351976','1116232594')
 ["DE03683515573047232594", "DE03 6835 1557 3047 2325 94", 20, "SOLADES1SFH", "68351557", "3047232594", 9]
-
+# once again using the high-level interface KontoCheck::
 >> KontoCheck::iban_gen('68351976','1116232594')
 "DE03683515573047232594"
 </pre>
 
+h2. Data file
+
+To use the library, you need (of course) the current Bank Data. KontoCheck uses an own compressed format
+to hold the bank data distributed by the Deutsche Bundesbank. You can generate the file yourself using
+the function KontoCheck::generate_lutfile() or use the file from
+<a href="http://sourceforge.net/projects/kontocheck/files/konto_check-de/5.2/blz.lut2f/download" target="_blank">SourceForge.net</a>.
+For further information have look at
+<a href="http://kontocheck.sourceforge.net/?ausgabe=4&sub=5" target="_blank">this page</a>.
+
 h2. License
 
-Since the original http://www.informatik.hs-mannheim.de/konto_check/ is
+Since the <a href="http://sourceforge.net/projects/kontocheck" target="_blank">original</a> is
 licensed under LGPL, so is this module.

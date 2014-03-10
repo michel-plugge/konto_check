@@ -330,8 +330,8 @@ module KontoCheck
 #   8. BLZ,PZ,NAME_NAME_KURZ,PLZ,ORT,BIC,NACHFOLGE_BLZ,AENDERUNG,LOESCHUNG
 #   9. BLZ,PZ,NAME_NAME_KURZ,PLZ,ORT,BIC,NACHFOLGE_BLZ,AENDERUNG,LOESCHUNG,PAN,NR
 #* filialen: (0 oder 1) Flag, ob nur die Daten der Hauptstellen (0) oder auch die der Filialen aufgenommen werden sollen
-#* set (0, 1 oder 2): Datensatz-Nummer. Jede LUT-Datei kann zwei Datensätze enthalten. Falls bei der Initialisierung nicht ein bestimmter Datensatz ausgewählt wird, wird derjenige genommen, der (laut Gültigkeitsstring) aktuell gültig ist.
-#* iban_file: Datei der Banken, die einer Selbstberechnung des IBAN nicht zugestimmt haben. Näheres dazu (inklusive Weblink) findet sich bei der Funktion KontoCheckRaw::iban_gen(blz,kto).
+#* set (0, 1 oder 2): Datensatz-Nummer. Jede LUT-Datei kann zwei Datensätze enthalten. Falls bei der Initialisierung nicht ein bestimmter Datensatz ausgewählt wird, wird derjenige genommen, der (laut Gültigkeitsstring) aktuell gültig ist. Bei 0 wird eine neue LUT-Datei generiert, bei 1 oder 2 wird der entsprechende Datensatz angehängt.
+#* iban_blacklist: Datei der Banken, die einer Selbstberechnung des IBAN nicht zugestimmt haben, bzw. von der IBAN-Berechnung ausgeschlossen werden sollen
 #
 #Mögliche Rückgabewerte:
 #
@@ -917,6 +917,7 @@ module KontoCheck
 #
 #Mögliche Rückgabewerte sind:
 #
+#   -146  (INVALID_PARAMETER_TYPE)     "Falscher Parametertyp für die Funktion"
 #      0  (FALSE)                      "falsch"
 #      1  (OK)                         "ok"
 
@@ -927,10 +928,17 @@ module KontoCheck
 #===KontoCheck::bic_check( bic)
 #=====KontoCheckRaw::bic_check( bic)
 #
-#Diese Funktion testet einen BIC (nur für deutsche Bankverbindungen).
+#Diese Funktion testet die Existenz eines (deutschen) BIC. Die Rückgabe ist ein
+#skalarer Wert, der das Testergebnis für den BIC angibt. Der BIC muß mit genau
+#8 oder 11 Stellen angegeben werden. Intern wird dabei die Funktion
+#lut_suche_bic() verwendet.
+#
+#Die Funktion arbeitet nur für deutsche Banken, da für andere keine Infos
+#vorliegen.
 #
 #Mögliche Rückgabewerte sind:
 #
+#   -146  (INVALID_PARAMETER_TYPE)     "Falscher Parametertyp für die Funktion"
 #   -145  (BIC_ONLY_GERMAN)            "Es werden nur deutsche BICs unterstützt"
 #   -144  (INVALID_BIC_LENGTH)         "Die Länge des BIC muß genau 8 oder 11 Zeichen sein"
 #      0  (FALSE)                      "falsch"

@@ -10,7 +10,7 @@
  * #  Verwendung in anderen Programmen bzw. Programmiersprachen benutzt     #
  * #  werden.                                                               #
  * #                                                                        #
- * #  Copyright (C) 2002-2011 Michael Plugge <m.plugge@hs-mannheim.de>      #
+ * #  Copyright (C) 2002-2014 Michael Plugge <m.plugge@hs-mannheim.de>      #
  * #                                                                        #
  * #  Dieses Programm ist freie Software; Sie dürfen es unter den           #
  * #  Bedingungen der GNU Lesser General Public License, wie von der Free   #
@@ -171,7 +171,7 @@
  * ######################################################################
  */
 
-#ifdef _WIN32
+#if _WIN32>0 || _WIN64>0
 #  if USE_CDECL
 #    if BUILD_DLL /* DLL kompilieren */
 #      define DLL_EXPORT __declspec (dllexport)
@@ -222,7 +222,7 @@
 
 #define DEFAULT_LUT_NAME "blz.lut","blz.lut2f","blz.lut2"
 
-#if _WIN32>0
+#if _WIN32>0 || _WIN64>0
 #define DEFAULT_LUT_PATH ".","C:","C:\\Programme\\konto_check"
 #else
 #define DEFAULT_LUT_PATH ".","/usr/local/etc","/etc","/usr/local/bin","/opt/konto_check"
@@ -291,6 +291,7 @@
 #define LUT2_VOLLTEXT_IDX            24
 #define LUT2_IBAN_REGEL              25
 #define LUT2_IBAN_REGEL_SORT         26
+#define LUT2_BIC_H_SORT              27
 
 #define LUT2_2_BLZ                  101
 #define LUT2_2_FILIALEN             102
@@ -318,6 +319,7 @@
 #define LUT2_2_VOLLTEXT_IDX         124
 #define LUT2_2_IBAN_REGEL           125
 #define LUT2_2_IBAN_REGEL_SORT      126
+#define LUT2_2_BIC_H_SORT           127
 
 #define LUT2_DEFAULT                501
 
@@ -334,6 +336,8 @@ extern const char *lut2_feld_namen[256];
  */
 
 #undef FALSE
+#define IBAN_ONLY_GERMAN                      -147
+#define INVALID_PARAMETER_TYPE                -146
 #define BIC_ONLY_GERMAN                       -145
 #define INVALID_BIC_LENGTH                    -144
 #define IBAN_CHKSUM_OK_RULE_IGNORED_BLZ       -143
@@ -505,6 +509,7 @@ extern const char *lut2_feld_namen[256];
 #define OK_HYPO_REQUIRES_KTO                    23
 #define OK_KTO_REPLACED_NO_PZ                   24
 #define OK_UNTERKONTO_ATTACHED                  25
+#define OK_SHORT_BIC_USED                       26
 #line 284 "konto_check_h.lx"
 
 #define MAX_BLZ_CNT 30000  /* maximale Anzahl BLZ's in generate_lut() */
@@ -894,6 +899,7 @@ DLL_EXPORT int lut_multiple_i(int b,int *cnt,int **p_blz,char ***p_name,char ***
 
    /* Funktionen, um einzelne Felder zu bestimmen (Rückgabe direkt) */
 DLL_EXPORT int lut_blz(char *b,int zweigstelle);
+DLL_EXPORT int lut_blz_i(int b,int zweigstelle);
 DLL_EXPORT int lut_filialen(char *b,int *retval);
 DLL_EXPORT int lut_filialen_i(int b,int *retval);
 DLL_EXPORT const char *lut_name(char *b,int zweigstelle,int *retval);
@@ -908,6 +914,8 @@ DLL_EXPORT int lut_pan(char *b,int zweigstelle,int *retval);
 DLL_EXPORT int lut_pan_i(int b,int zweigstelle,int *retval);
 DLL_EXPORT const char *lut_bic(char *b,int zweigstelle,int *retval);
 DLL_EXPORT const char *lut_bic_i(int b,int zweigstelle,int *retval);
+DLL_EXPORT const char *lut_bic_h(char *b,int zweigstelle,int *retval);
+DLL_EXPORT const char *lut_bic_hi(int b,int zweigstelle,int *retval);
 DLL_EXPORT int lut_nr(char *b,int zweigstelle,int *retval);
 DLL_EXPORT int lut_nr_i(int b,int zweigstelle,int *retval);
 DLL_EXPORT int lut_pz(char *b,int zweigstelle,int *retval);
@@ -921,6 +929,48 @@ DLL_EXPORT int lut_nachfolge_blz_i(int b,int zweigstelle,int *retval);
 DLL_EXPORT int lut_keine_iban_berechnung(char *iban_blacklist,char *lutfile,int set);
 DLL_EXPORT int lut_iban_regel(char *b,int zweigstelle,int *retval);
 DLL_EXPORT int lut_iban_regel_i(int b,int zweigstelle,int *retval);
+
+DLL_EXPORT int bic_aenderung(char *bic_name,int mode,int filiale,int*retval);
+DLL_EXPORT int bic_loeschung(char *bic_name,int mode,int filiale,int*retval);
+DLL_EXPORT int bic_iban_regel(char *bic_name,int mode,int filiale,int*retval);
+DLL_EXPORT int bic_nachfolge_blz(char *bic_name,int mode,int filiale,int*retval);
+DLL_EXPORT int bic_nr(char *bic_name,int mode,int filiale,int*retval);
+DLL_EXPORT int bic_pan(char *bic_name,int mode,int filiale,int*retval);
+DLL_EXPORT int bic_plz(char *bic_name,int mode,int filiale,int*retval);
+DLL_EXPORT int bic_pz(char *bic_name,int mode,int filiale,int*retval);
+DLL_EXPORT const char *bic_bic(char *bic_name,int mode,int filiale,int*retval);
+DLL_EXPORT const char *bic_bic_h(char *bic_name,int mode,int filiale,int*retval);
+DLL_EXPORT const char *bic_name(char *bic_name,int mode,int filiale,int*retval);
+DLL_EXPORT const char *bic_name_kurz(char *bic_name,int mode,int filiale,int*retval);
+DLL_EXPORT const char *bic_ort(char *bic_name,int mode,int filiale,int*retval);
+
+DLL_EXPORT int biq_aenderung(int idx,int*retval);
+DLL_EXPORT int biq_loeschung(int idx,int*retval);
+DLL_EXPORT int biq_iban_regel(int idx,int*retval);
+DLL_EXPORT int biq_nachfolge_blz(int idx,int*retval);
+DLL_EXPORT int biq_nr(int idx,int*retval);
+DLL_EXPORT int biq_pan(int idx,int*retval);
+DLL_EXPORT int biq_plz(int idx,int*retval);
+DLL_EXPORT int biq_pz(int idx,int*retval);
+DLL_EXPORT const char *biq_bic(int idx,int*retval);
+DLL_EXPORT const char *biq_bic_h(int idx,int*retval);
+DLL_EXPORT const char *biq_name(int idx,int*retval);
+DLL_EXPORT const char *biq_name_kurz(int idx,int*retval);
+DLL_EXPORT const char *biq_ort(int idx,int*retval);
+
+DLL_EXPORT int iban_aenderung(char *iban,int filiale,int*retval);
+DLL_EXPORT int iban_loeschung(char *iban,int filiale,int*retval);
+DLL_EXPORT int iban_iban_regel(char *iban,int filiale,int*retval);
+DLL_EXPORT int iban_nachfolge_blz(char *iban,int filiale,int*retval);
+DLL_EXPORT int iban_nr(char *iban,int filiale,int*retval);
+DLL_EXPORT int iban_pan(char *iban,int filiale,int*retval);
+DLL_EXPORT int iban_plz(char *iban,int filiale,int*retval);
+DLL_EXPORT int iban_pz(char *iban,int filiale,int*retval);
+DLL_EXPORT const char *iban_bic(char *iban,int filiale,int*retval);
+DLL_EXPORT const char *iban_bic_h(char *iban,int filiale,int*retval);
+DLL_EXPORT const char *iban_name(char *iban,int filiale,int*retval);
+DLL_EXPORT const char *iban_name_kurz(char *iban,int filiale,int*retval);
+DLL_EXPORT const char *iban_ort(char *iban,int filiale,int*retval);
 
 /*
  * ######################################################################
@@ -937,6 +987,7 @@ DLL_EXPORT int lut_iban_regel_i(int b,int zweigstelle,int *retval);
 #define LUT_SUCHE_PLZ         7
 #define LUT_SUCHE_PZ          8
 #define LUT_SUCHE_REGEL       9
+#define LUT_SUCHE_BIC_H      10
 
    /* Defaultwert für sort/uniq bei Suchfunktionen (=> nur eine Zweigstelle
     * zurückgeben) (betrifft nur PHP, Perl und Ruby, bei denen der Parameter
@@ -953,6 +1004,7 @@ DLL_EXPORT int lut_iban_regel_i(int b,int zweigstelle,int *retval);
 DLL_EXPORT int kto_check_idx2blz(int idx,int *zweigstelle,int *retval);
 DLL_EXPORT int konto_check_idx2blz(int idx,int *zweigstelle,int *retval);
 DLL_EXPORT int lut_suche_bic(char *such_name,int *anzahl,int **start_idx,int **zweigstellen_base,char ***base_name,int **blz_base);
+DLL_EXPORT int lut_suche_bic_h(char *such_name,int *anzahl,int **start_idx,int **zweigstellen_base,char ***base_name,int **blz_base);
 DLL_EXPORT int lut_suche_namen(char *such_name,int *anzahl,int **start_idx,int **zweigstellen_base,char ***base_name,int **blz_base);
 DLL_EXPORT int lut_suche_namen_kurz(char *such_name,int *anzahl,int **start_idx,int **zweigstellen_base,char ***base_name,int **blz_base);
 DLL_EXPORT int lut_suche_ort(char *such_name,int *anzahl,int **start_idx,int **zweigstellen_base,char ***base_name,int **blz_base);
@@ -993,6 +1045,9 @@ DLL_EXPORT char *iban_bic_gen(char *blz,char *kto,const char **bicp,char *blz2,c
 DLL_EXPORT char *iban_bic_gen1(char *blz,char *kto,const char **bicp,int *retval);
 DLL_EXPORT int ipi_gen(char *zweck,char *dst,char *papier);
 DLL_EXPORT int ipi_check(char *zweck);
+
+   /* BIC-Funktionen */
+DLL_EXPORT int bic_info(char *bic_name,int mode,int *anzahl,int *start_idx);
 
    /* Rückgabewerte in Klartext umwandeln */
 DLL_EXPORT int kto_check_encoding(int mode);
