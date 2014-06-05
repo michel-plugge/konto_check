@@ -1,6 +1,5 @@
 /* vim: ft=c:set si:set fileencoding=iso-8859-1
  */
-#line 9 "konto_check_h.lx"
 
 /*
  * ##########################################################################
@@ -336,6 +335,8 @@ extern const char *lut2_feld_namen[256];
  */
 
 #undef FALSE
+#define INVALID_BIQ_INDEX                     -149
+#define ARRAY_INDEX_OUT_OF_RANGE              -148
 #define IBAN_ONLY_GERMAN                      -147
 #define INVALID_PARAMETER_TYPE                -146
 #define BIC_ONLY_GERMAN                       -145
@@ -379,31 +380,6 @@ extern const char *lut2_feld_namen[256];
 #define KTO_CHECK_NO_DEFAULT_BLOCK            -107
 #define KTO_CHECK_KEY_NOT_FOUND               -106
 #define LUT2_NO_LONGER_VALID_BETTER           -105
-#define DTA_SRC_KTO_DIFFERENT                 -104
-#define DTA_SRC_BLZ_DIFFERENT                 -103
-#define DTA_CR_LF_IN_FILE                     -102
-#define DTA_INVALID_C_EXTENSION               -101
-#define DTA_FOUND_SET_A_NOT_C                 -100
-#define DTA_FOUND_SET_E_NOT_C                  -99
-#define DTA_FOUND_SET_C_NOT_EXTENSION          -98
-#define DTA_FOUND_SET_E_NOT_EXTENSION          -97
-#define DTA_INVALID_EXTENSION_COUNT            -96
-#define DTA_INVALID_NUM                        -95
-#define DTA_INVALID_CHARS                      -94
-#define DTA_CURRENCY_NOT_EURO                  -93
-#define DTA_EMPTY_AMOUNT                       -92
-#define DTA_INVALID_TEXT_KEY                   -91
-#define DTA_EMPTY_STRING                       -90
-#define DTA_MARKER_A_NOT_FOUND                 -89
-#define DTA_MARKER_C_NOT_FOUND                 -88
-#define DTA_MARKER_E_NOT_FOUND                 -87
-#define DTA_INVALID_SET_C_LEN                  -86
-#define DTA_INVALID_SET_LEN                    -85
-#define DTA_WAERUNG_NOT_EURO                   -84
-#define DTA_INVALID_ISSUE_DATE                 -83
-#define DTA_INVALID_DATE                       -82
-#define DTA_FORMAT_ERROR                       -81
-#define DTA_FILE_WITH_ERRORS                   -80
 #define INVALID_SEARCH_RANGE                   -79
 #define KEY_NOT_FOUND                          -78
 #define BAV_FALSE                              -77
@@ -510,7 +486,6 @@ extern const char *lut2_feld_namen[256];
 #define OK_KTO_REPLACED_NO_PZ                   24
 #define OK_UNTERKONTO_ATTACHED                  25
 #define OK_SHORT_BIC_USED                       26
-#line 284 "konto_check_h.lx"
 
 #define MAX_BLZ_CNT 30000  /* maximale Anzahl BLZ's in generate_lut() */
 
@@ -1062,6 +1037,9 @@ DLL_EXPORT const char *kto_check_retval2dos(int retval);
 
    /* Prüfziffer (numerisch) in String umwandeln */
 const DLL_EXPORT char *pz2str(int pz,int *ret);
+
+   /* Flag für neue Prüfziffermethoden setzen bzw. abfragen */
+DLL_EXPORT int pz_aenderungen_enable(int set);
 
 /*
  * ######################################################################

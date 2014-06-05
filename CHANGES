@@ -1,3 +1,9 @@
+important changes in version 5.4:
+   - changes in check method 90 implemented
+   - removed some obsolete return values (-80 ... -104)
+   - some bug fixes, mainly in the new functions bic_(), biq_*() and iban_*()
+   - some minor changes, see the german 0_history.txt
+
 important changes in version 5.3:
    - new IBAN rule 57 implemented
    - changes in IBAN rules 54 and 56 implemented

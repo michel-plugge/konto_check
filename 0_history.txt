@@ -4,9 +4,66 @@
 ##################################################################################
 #                                                                                #
 # Autor             : Michael Plugge <m.plugge@hs-mannheim.de>                   #
-# Version           : 5.3 (final)                                                #
-# Datum             : 04.03.2014                                                 #
+# Version           : 5.4 (final)                                                #
+# Datum             : 26.05.2014                                                 #
 ##################################################################################
+
+##################################################################################
+###                       02.06.14 Version 5.4 (final)                         ###
+##################################################################################
+
+Diese Version enthält vor allem einige Bugfixes und Ergänzugen zur Version 5.3,
+sowie eine erste Version des Java-Ports von konto_check. Es sind keine neuen
+Features implementiert.
+
+ - Änderungen in PZ-Methode 90 implementiert (bei den IBAN-Regeln gibt es keine
+   Änderung)
+
+ - Es gibt eine erste Version für Java; diese läuft allerdings nicht immer
+   stabil, siehe die Datei 00liesmich.txt im Verzeichnis java/. Momentan wird
+   für java deshalb nur der Quellcode mitgeliefert; für den Port ist noch swig
+   (www.swig.org) sowie ein C-Compiler erforderlich.
+
+ - für gawk gibt es ein Patchfile für die Version 4.1.1; dieses wurde direkt
+   von der gawk-Version 4.1.0 übernommen
+
+ - Die Funktionen kto_check_retval2*() wurden in eine eigene Datei retvals.h
+   ausgelagert; die anderen Quellcodedateien können bei Bedarf problemlos nach
+   UTF-8 umkodiert werden.
+
+ - Die neuen Funktionen bic_*(), biq_*() und iban_*() sind jetzt in allen Ports
+   (außer awk) enthalten
+
+ - vor Speicherallokierungen wurde jeweils ein Typecast eingefügt
+
+ - einige Bugfixes in den Funktionen bic_*() und biq_*()
+
+ - Fehler in RETURN_OK für die IBAN-Regeln korriegiert (falls eine Bank durch
+   die Nachfolge-BLZ ersetzt wurde, wurde der Wert OK_BLZ_KTO_REPLACED statt
+   OK_BLZ_REPLACED zurückgegeben
+
+ - die numerischen Funktionen bic_*(), biq_*() und iban_*() geben im Fehlerfall
+   den Wert 0 zurück, wie die entsprechenden lut_*() Funktionen
+
+ - Die Rückgabewerte -80 ... -104 (sie wurden nur im mittlerweile obsoleten
+   dtaus_test benutzt) sind entfernt
+
+ - die Funktion rebuild_blzfile() berücksichtigt jetzt auch die IBAN-Regeln; so ist
+   es z.B. möglich, mit dem Befehl
+
+      ./konto_check -r blz.lut2f blz.rebuild 2
+
+   den zweiten Datensatz der LUT-Datei in eine BLZ-Datei umzuwandeln. Diese
+   Datei stimmt bis auf die vier Testkonten (13051172, 16052072, 80053772 und
+   80053782) und evl. die Reihenfolge bei einzelnen Banken mit der Datei der
+   Deutschen Bundesbank überein. Der letzte Parameter (1 oder 2) gibt die
+   Nummer des zu verwendenden Datensatzes an.
+
+   Die Funktion ist aktuell nur in der C-Datei enthalten, wird in der nächsten
+   Version jedoch auch in die anderen Ports gebracht.
+
+ - Testroutinen für Perl auf die neue LUT-Datei angepasst
+
 
 ##################################################################################
 ###                       04.03.14 Version 5.3 (final)                         ###

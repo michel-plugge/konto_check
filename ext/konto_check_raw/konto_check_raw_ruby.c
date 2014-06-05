@@ -43,7 +43,7 @@ vim: ft=c:set si:set fileencoding=utf-8
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#line 54 "konto_check_raw_ruby.lxx"
+#line 56 "konto_check_raw_ruby.lxx"
 // Include the Ruby headers and goodies
 #include "ruby.h"
 #include <stdio.h>
@@ -2401,6 +2401,1230 @@ static VALUE bank_nr(int argc,VALUE* argv,VALUE self)
 }
 
 /**
+ * get_params_bic()
+ *
+ * extract params from argc/argv for the bic_*(), biq_*() and iban_*() function groups
+ */
+static void get_params_bic(int argc,VALUE* argv,char *bic,int *argi1,int *argi2,int arg_mode)
+{
+   int len,maxlen=11;
+   VALUE arg1_rb,arg2_rb,arg3_rb;
+
+   switch(arg_mode){
+      case 0:  /* ein notwendiger, zwei optionale Parameter (für bic_*()) */
+         rb_scan_args(argc,argv,"12",&arg1_rb,&arg2_rb,&arg3_rb);
+         if(NIL_P(arg2_rb))   /* mode (default 0) */
+            *argi1=0;
+         else
+            *argi1=NUM2INT(arg2_rb);
+         if(NIL_P(arg3_rb))   /* Filiale (Default Hauptstelle) */
+            *argi2=0;
+         else
+            *argi2=NUM2INT(arg3_rb);
+         break;
+
+      case 1:  /* ein notwendiger Integer-Parameter (für biq_*()) */
+         rb_scan_args(argc,argv,"10",&arg1_rb);
+         *argi1=NUM2INT(arg1_rb);
+         return;
+
+      case 2:  /* ein notwendiger, ein optionaler Parameter (für bic_info()) */
+      case 3:  /* ein notwendiger, ein optionaler Parameter (für iban_*() */
+         if(arg_mode==2)
+            maxlen=9;
+         else
+            maxlen=22;
+         rb_scan_args(argc,argv,"11",&arg1_rb,&arg2_rb);
+         if(NIL_P(arg2_rb))   /* Filiale bei iban_*(), bzw. mode bei bic_info() */
+            *argi1=0;
+         else
+            *argi1=NUM2INT(arg2_rb);
+         break;
+
+      default:
+         break;
+   }
+
+   if(TYPE(arg1_rb)!=RUBY_T_STRING)rb_raise(rb_eTypeError,"%s","First parameter must be string.");
+   if((len=RSTRING_LEN(arg1_rb))>maxlen)len=maxlen;
+   if(bic){
+      strncpy(bic,RSTRING_PTR(arg1_rb),len);
+      *(bic+len)=0;
+   }
+}
+
+/**
+ * ===KontoCheckRaw::bic_info( bic [,mode [,filiale]])
+ * =====KontoCheck::bic_info( bic [,mode [,filiale]])
+ * 
+ * Diese Funktion sucht Banken mit einem bestimmten BIC und gibt die
+ * gefundene Anzahl sowie den Startindex in den internen Arrays zurück. Sie
+ * ist für die Funktionsgruppe biq_* gedacht, falls mehrere Werte aus der
+ * BLZ-Datei bestimmt werden sollen (z.B. verschiedene Felder oder Werte für
+ * mehrere Zweigstellen einer Bank). So erspart man sich die relativ
+ * aufwendige Suche; sie ist nur einmal notwendig.
+ *
+ * Parameter:
+ *  * bic:  BIC zu dem die Banken bestimmt werden sollen (komplett oder teilweise)
+ *  * mode: Suchmodus; er kann die folgenden Werte annehmen:
+ *          mode=1: Suche in allen BICs der BLZ-Datei (Haupt- und Nebenstellen)
+ *          mode=2: Suche nur in den BICs der Hauptstellen
+ *          mode=0: zunächst Suche bei den Hauptstellen, dann bei Haupt- und Nebenstellen;
+ *                  falls dann noch nichts gefunden wurde, werden die drei letzten Stellen
+ *                  (Filialcode) mit XXX gefüllt und noch einmal eine Suche gemacht.
+ *
+ * Zurückgegeben wird ein Array mit drei Elementen: Das erste ist der
+ * Startindex in den internen Arrays (zur Verwendung in der Funktionsgruppe
+ * biq_*()),  das zweite die Anzahl der gefundenen BICs und das dritte ein
+ * Statuscode. Der Startindex kann sowohl positiv als auch negativ sein; im
+ * Fehlerfall wird nil zurückgegeben. Daher sollte in jedem Fall der Statuscode
+ * und die zurückgegebee Anzahl gefundener Banken kontrolliert werden.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * *  -78  KEY_NOT_FOUND             "Die Suche lieferte kein Ergebnis"                                          
+ * *  -70  LUT1_FILE_USED            "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"                         
+ * *  -46  LUT2_BIC_NOT_INITIALIZED  "Das Feld BIC wurde nicht initialisiert"                                    
+ * *  -40  LUT2_NOT_INITIALIZED      "die Programmbibliothek wurde noch nicht initialisiert"                     
+ * *  -10  FILE_READ_ERROR           "kann Datei nicht lesen"                                                    
+ * *   -9  ERROR_MALLOC              "kann keinen Speicher allokieren"                                           
+ * *    1  OK                        "ok"                                                                        
+ * *   26  OK_SHORT_BIC_USED         "ok, für den BIC wurde die Zweigstellennummer allerdings durch XXX ersetzt" 
+ */
+static VALUE bic_info_rb(int argc,VALUE* argv,VALUE self)
+{
+   char bic[24],error_msg[512];
+   int retval,cnt,mode,start_idx;
+
+   get_params_bic(argc,argv,bic,&mode,NULL,2);
+   retval=bic_info(bic,mode,&cnt,&start_idx);
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   return rb_ary_new3(3,retval<0?Qnil:INT2FIX(start_idx),INT2FIX(cnt),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::bic_name( bic [,mode [,filiale]])
+ * ===KontoCheckRaw::bic_info( bic [,mode])
+ * =====KontoCheck::bic_name( bic [,mode [,filiale]])
+ * 
+ * Diese Funktion liefert den Namen einer Bank. Der Rückgabewert ist ein
+ * Array mit zwei Elementen: im ersten steht ein String mit dem Namen, im
+ * zweiten ein Statuscode. Im Fehlerfall wird für den Namen nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * *  -78  (KEY_NOT_FOUND)                 "Die Suche lieferte kein Ergebnis"
+ * *  -70  (LUT1_FILE_USED)                "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -51  (LUT2_NAME_NOT_INITIALIZED)     "Das Feld Bankname wurde nicht initialisiert"
+ * *  -46  (LUT2_BIC_NOT_INITIALIZED)      "Das Feld BIC wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)          "die Programmbibliothek wurde noch nicht initialisiert"
+ * *  -10  (FILE_READ_ERROR)               "kann Datei nicht lesen"
+ * *   -9  (ERROR_MALLOC)                  "kann keinen Speicher allokieren"
+ * *    1  (OK)                            "ok"
+ * *   26  (OK_SHORT_BIC_USED)             "ok, für den BIC wurde die Zweigstellennummer allerdings durch XXX ersetzt"
+ */
+static VALUE bic_name_rb(int argc,VALUE* argv,VALUE self)
+{
+   char bic[16],error_msg[512];
+   const char *name;
+   int retval,filiale,mode;
+
+   get_params_bic(argc,argv,bic,&mode,&filiale,0);
+   name=bic_name(bic,mode,filiale,&retval);
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:rb_str_new2(name),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::bic_name_kurz( bic [,mode [,filiale]])
+ * ===KontoCheckRaw::bic_info( bic [,mode])
+ * =====KontoCheck::bic_name_kurz( bic [,mode [,filiale]])
+ * 
+ * Diese Funktion liefert den Kurznamen einer Bank. Der Rückgabewert ist ein
+ * Array mit zwei Elementen: im ersten steht ein String mit dem Namen, im
+ * zweiten ein Statuscode. Im Fehlerfall wird für den Namen nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * *  -78  (KEY_NOT_FOUND)                 "Die Suche lieferte kein Ergebnis"
+ * *  -70  (LUT1_FILE_USED)                "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -48  (LUT2_NAME_KURZ_NOT_INITIALIZED) "Das Feld Kurzname wurde nicht initialisiert"
+ * *  -46  (LUT2_BIC_NOT_INITIALIZED)      "Das Feld BIC wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)          "die Programmbibliothek wurde noch nicht initialisiert"
+ * *  -10  (FILE_READ_ERROR)               "kann Datei nicht lesen"
+ * *   -9  (ERROR_MALLOC)                  "kann keinen Speicher allokieren"
+ * *    1  (OK)                            "ok"
+ * *   26  (OK_SHORT_BIC_USED)             "ok, für den BIC wurde die Zweigstellennummer allerdings durch XXX ersetzt"
+ */
+static VALUE bic_name_kurz_rb(int argc,VALUE* argv,VALUE self)
+{
+   char bic[16],error_msg[512];
+   const char *name;
+   int retval,filiale,mode;
+
+   get_params_bic(argc,argv,bic,&mode,&filiale,0);
+   name=bic_name_kurz(bic,mode,filiale,&retval);
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:rb_str_new2(name),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::bic_ort( bic [,mode [,filiale]])
+ * ===KontoCheckRaw::bic_info( bic [,mode])
+ * =====KontoCheck::bic_ort( bic [,mode [,filiale]])
+ *
+ * Diese Funktion liefert den Ort einer Bank. Falls der Parameter filiale nicht
+ * angegeben ist, wird der Sitz der Hauptstelle ausgegeben. Der Rückgabewert
+ * ist ein Array mit zwei Elementen: im ersten steht ein String mit dem Namen,
+ * im zweiten ein Statuscode. Im Fehlerfall wird für den Ort nil
+ * zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ *
+ * *  -78  (KEY_NOT_FOUND)                 "Die Suche lieferte kein Ergebnis"
+ * *  -70  (LUT1_FILE_USED)                "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -49  (LUT2_ORT_NOT_INITIALIZED)   "Das Feld Ort wurde nicht initialisiert"
+ * *  -46  (LUT2_BIC_NOT_INITIALIZED)      "Das Feld BIC wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)          "die Programmbibliothek wurde noch nicht initialisiert"
+ * *  -10  (FILE_READ_ERROR)               "kann Datei nicht lesen"
+ * *   -9  (ERROR_MALLOC)                  "kann keinen Speicher allokieren"
+ * *    1  (OK)                            "ok"
+ * *   26  (OK_SHORT_BIC_USED)             "ok, für den BIC wurde die Zweigstellennummer allerdings durch XXX ersetzt"
+ */
+static VALUE bic_ort_rb(int argc,VALUE* argv,VALUE self)
+{
+   char bic[16],error_msg[512];
+   const char *ort;
+   int retval,filiale,mode;
+
+   get_params_bic(argc,argv,bic,&mode,&filiale,0);
+   ort=bic_ort(bic,mode,filiale,&retval);
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:rb_str_new2(ort),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::bic_plz( bic [,mode [,filiale]])
+ * ===KontoCheckRaw::bic_info( bic [,mode])
+ * =====KontoCheck::bic_plz( bic [,mode [,filiale]])
+ * 
+ * Diese Funktion liefert die Postleitzahl einer Bank. Falls der Parameter
+ * filiale nicht angegeben ist, wird die PLZ der Hauptstelle ausgegeben. Der
+ * Rückgabewert ist ein Array mit zwei Elementen: im ersten steht die PLZ, im
+ * zweiten ein Statuscode. Im Fehlerfall wird für die PLZ nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * *  -78  (KEY_NOT_FOUND)                 "Die Suche lieferte kein Ergebnis"
+ * *  -70  (LUT1_FILE_USED)                "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -50  (LUT2_PLZ_NOT_INITIALIZED)      "Das Feld PLZ wurde nicht initialisiert"
+ * *  -46  (LUT2_BIC_NOT_INITIALIZED)      "Das Feld BIC wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)          "die Programmbibliothek wurde noch nicht initialisiert"
+ * *  -10  (FILE_READ_ERROR)               "kann Datei nicht lesen"
+ * *   -9  (ERROR_MALLOC)                  "kann keinen Speicher allokieren"
+ * *    1  (OK)                            "ok"
+ * *   26  (OK_SHORT_BIC_USED)             "ok, für den BIC wurde die Zweigstellennummer allerdings durch XXX ersetzt"
+ */
+static VALUE bic_plz_rb(int argc,VALUE* argv,VALUE self)
+{
+   char bic[16],error_msg[512];
+   int retval,plz,filiale,mode;
+
+   get_params_bic(argc,argv,bic,&mode,&filiale,0);
+   plz=bic_plz(bic,mode,filiale,&retval);
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:INT2FIX(plz),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::bic_pz( bic [,mode [,filiale]])
+ * ===KontoCheckRaw::bic_info( bic [,mode])
+ * =====KontoCheck::bic_pz( bic [,mode [,filiale]])
+ * 
+ * Diese Funktion liefert die Prüfziffer einer Bank. Die Funktion unterstützt
+ * keine Filialen; zu jeder bic kann es in der LUT-Datei nur eine
+ * Prüfziffermethode geben. Der Rückgabewert ist ein Array mit zwei Elementen:
+ * im ersten steht die Prüfziffer, im zweiten ein Statuscode. Im Fehlerfall
+ * wird für den Prüfziffer nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * *  -78  (KEY_NOT_FOUND)                 "Die Suche lieferte kein Ergebnis"
+ * *  -70  (LUT1_FILE_USED)                "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -46  (LUT2_BIC_NOT_INITIALIZED)      "Das Feld BIC wurde nicht initialisiert"
+ * *  -45  (LUT2_PZ_NOT_INITIALIZED)       "Das Feld Prüfziffer wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)          "die Programmbibliothek wurde noch nicht initialisiert"
+ * *  -10  (FILE_READ_ERROR)               "kann Datei nicht lesen"
+ * *   -9  (ERROR_MALLOC)                  "kann keinen Speicher allokieren"
+ * *    1  (OK)                            "ok"
+ * *   26  (OK_SHORT_BIC_USED)             "ok, für den BIC wurde die Zweigstellennummer allerdings durch XXX ersetzt"
+ */
+static VALUE bic_pz_rb(int argc,VALUE* argv,VALUE self)
+{
+   char bic[16],error_msg[512];
+   int retval,pz,filiale,mode;
+
+   get_params_bic(argc,argv,bic,&mode,&filiale,0);
+   pz=bic_pz(bic,mode,filiale,&retval);
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:INT2FIX(pz),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::bic_bic( bic [,mode [,filiale]])
+ * ===KontoCheckRaw::bic_info( bic [,mode])
+ * =====KontoCheck::bic_bic( bic [,mode [,filiale]])
+ * 
+ * Diese Funktion liefert den BIC (Bank Identifier Code) einer Bank. Der
+ * Rückgabewert ist ein Array mit zwei Elementen: im ersten steht ein String
+ * mit dem BIC, im zweiten ein Statuscode. Im Fehlerfall wird für den BIC
+ * nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * *  -78  (KEY_NOT_FOUND)                 "Die Suche lieferte kein Ergebnis"
+ * *  -70  (LUT1_FILE_USED)                "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -46  (LUT2_BIC_NOT_INITIALIZED)      "Das Feld BIC wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)          "die Programmbibliothek wurde noch nicht initialisiert"
+ * *  -10  (FILE_READ_ERROR)               "kann Datei nicht lesen"
+ * *   -9  (ERROR_MALLOC)                  "kann keinen Speicher allokieren"
+ * *    1  (OK)                            "ok"
+ * *   26  (OK_SHORT_BIC_USED)             "ok, für den BIC wurde die Zweigstellennummer allerdings durch XXX ersetzt"
+ */
+static VALUE bic_bic_rb(int argc,VALUE* argv,VALUE self)
+{
+   char bic[16],error_msg[512];
+   const char *ptr;
+   int retval,filiale,mode;
+
+   get_params_bic(argc,argv,bic,&mode,&filiale,0);
+   ptr=bic_bic(bic,mode,filiale,&retval);
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:rb_str_new2(ptr),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::bic_aenderung( bic [,mode [,filiale]])
+ * ===KontoCheckRaw::bic_info( bic [,mode])
+ * =====KontoCheck::bic_aenderung( bic [,mode [,filiale]])
+ * 
+ * Diese Funktion liefert das  'Änderung' Flag einer Bank (als string).
+ * Mögliche Werte sind: A (Addition), M (Modified), U (Unchanged), D
+ * (Deletion). Der Rückgabewert ist ein Array mit zwei Elementen: im ersten
+ * steht ein String mit dem Änderungsflag, im zweiten ein Statuscode. Im
+ * Fehlerfall wird für das Flag nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * *  -78  (KEY_NOT_FOUND)                 "Die Suche lieferte kein Ergebnis"
+ * *  -70  (LUT1_FILE_USED)                "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -46  (LUT2_BIC_NOT_INITIALIZED)      "Das Feld BIC wurde nicht initialisiert"
+ * *  -43  (LUT2_AENDERUNG_NOT_INITIALIZED) "Das Feld Änderung wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)          "die Programmbibliothek wurde noch nicht initialisiert"
+ * *  -10  (FILE_READ_ERROR)               "kann Datei nicht lesen"
+ * *   -9  (ERROR_MALLOC)                  "kann keinen Speicher allokieren"
+ * *    1  (OK)                            "ok"
+ * *   26  (OK_SHORT_BIC_USED)             "ok, für den BIC wurde die Zweigstellennummer allerdings durch XXX ersetzt"
+ */
+static VALUE bic_aenderung_rb(int argc,VALUE* argv,VALUE self)
+{
+   char bic[16],aenderung[2],error_msg[512];
+   int retval,filiale,mode;
+
+   get_params_bic(argc,argv,bic,&mode,&filiale,0);
+   *aenderung=bic_aenderung(bic,mode,filiale,&retval);
+   aenderung[1]=0;
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:rb_str_new2(aenderung),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::bic_loeschung( bic [,mode [,filiale]])
+ * ===KontoCheckRaw::bic_info( bic [,mode])
+ * =====KontoCheck::bic_loeschung( bic [,mode [,filiale]])
+ * 
+ * Diese Funktion liefert das Lösch-Flag für eine Bank zurück (als Integer;
+ * mögliche Werte sind 0 und 1). Der Rückgabewert ist ein Array mit zwei
+ * Elementen: im ersten steht das Flag, im zweiten ein Statuscode. Im
+ * Fehlerfall wird für das Flag nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * *  -78  (KEY_NOT_FOUND)                 "Die Suche lieferte kein Ergebnis"
+ * *  -70  (LUT1_FILE_USED)                "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -46  (LUT2_BIC_NOT_INITIALIZED)      "Das Feld BIC wurde nicht initialisiert"
+ * *  -42  (LUT2_LOESCHUNG_NOT_INITIALIZED) "Das Feld Löschung wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)          "die Programmbibliothek wurde noch nicht initialisiert"
+ * *  -10  (FILE_READ_ERROR)               "kann Datei nicht lesen"
+ * *   -9  (ERROR_MALLOC)                  "kann keinen Speicher allokieren"
+ * *    1  (OK)                            "ok"
+ * *   26  (OK_SHORT_BIC_USED)             "ok, für den BIC wurde die Zweigstellennummer allerdings durch XXX ersetzt"
+ */
+static VALUE bic_loeschung_rb(int argc,VALUE* argv,VALUE self)
+{
+   char bic[16],error_msg[512];
+   int retval,loeschung,filiale,mode;
+
+   get_params_bic(argc,argv,bic,&mode,&filiale,0);
+   loeschung=bic_loeschung(bic,mode,filiale,&retval)-'0';
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:INT2FIX(loeschung),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::bic_nachfolge_blz( bic [,mode [,filiale]])
+ * ===KontoCheckRaw::bic_info( bic [,mode])
+ * =====KontoCheck::bic_nachfolge_blz( bic [,mode [,filiale]])
+ * 
+ * Diese Funktion liefert die Nachfolge-BLZ für eine Bank, die gelöscht werden
+ * soll (bei der das 'Löschung' Flag 1 ist). Der Rückgabewert ist ein Array mit
+ * zwei Elementen: im ersten steht die Nachfolge-BLZ, im zweiten ein Statuscode. Im
+ * Fehlerfall wird für die Nachfolge-BLZ nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * *  -78  (KEY_NOT_FOUND)                 "Die Suche lieferte kein Ergebnis"
+ * *  -70  (LUT1_FILE_USED)                "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -46  (LUT2_BIC_NOT_INITIALIZED)      "Das Feld BIC wurde nicht initialisiert"
+ * *  -41  (LUT2_NACHFOLGE_BLZ_NOT_INITIALIZED) "Das Feld Nachfolge-BLZ wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)          "die Programmbibliothek wurde noch nicht initialisiert"
+ * *  -10  (FILE_READ_ERROR)               "kann Datei nicht lesen"
+ * *   -9  (ERROR_MALLOC)                  "kann keinen Speicher allokieren"
+ * *    1  (OK)                            "ok"
+ * *   26  (OK_SHORT_BIC_USED)             "ok, für den BIC wurde die Zweigstellennummer allerdings durch XXX ersetzt"
+ */
+static VALUE bic_nachfolge_blz_rb(int argc,VALUE* argv,VALUE self)
+{
+   char bic[16],error_msg[512];
+   int retval,n_blz,filiale,mode;
+
+   get_params_bic(argc,argv,bic,&mode,&filiale,0);
+   n_blz=bic_nachfolge_blz(bic,mode,filiale,&retval);
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:INT2FIX(n_blz),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::bic_pan( bic [,mode [,filiale]])
+ * ===KontoCheckRaw::bic_info( bic [,mode])
+ * =====KontoCheck::bic_pan( bic [,mode [,filiale]])
+ * 
+ * Diese Funktion liefert den PAN (Primary Account Number) einer Bank. Der
+ * Rückgabewert ist ein Array mit zwei Elementen: im ersten steht der PAN, im
+ * zweiten ein Statuscode. Im Fehlerfall wird für den PAN nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * *  -78  (KEY_NOT_FOUND)                 "Die Suche lieferte kein Ergebnis"
+ * *  -70  (LUT1_FILE_USED)                "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -47  (LUT2_PAN_NOT_INITIALIZED)      "Das Feld PAN wurde nicht initialisiert"
+ * *  -46  (LUT2_BIC_NOT_INITIALIZED)      "Das Feld BIC wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)          "die Programmbibliothek wurde noch nicht initialisiert"
+ * *  -10  (FILE_READ_ERROR)               "kann Datei nicht lesen"
+ * *   -9  (ERROR_MALLOC)                  "kann keinen Speicher allokieren"
+ * *    1  (OK)                            "ok"
+ * *   26  (OK_SHORT_BIC_USED)             "ok, für den BIC wurde die Zweigstellennummer allerdings durch XXX ersetzt"
+ */
+static VALUE bic_pan_rb(int argc,VALUE* argv,VALUE self)
+{
+   char bic[16],error_msg[512];
+   int retval,pan,filiale,mode;
+
+   get_params_bic(argc,argv,bic,&mode,&filiale,0);
+   pan=bic_pan(bic,mode,filiale,&retval);
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:INT2FIX(pan),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::bic_nr( bic [,mode [,filiale]])
+ * ===KontoCheckRaw::bic_info( bic [,mode])
+ * =====KontoCheck::bic_nr( bic [,mode [,filiale]])
+ * 
+ * Diese Funktion liefert die laufende Nummer einer Bank (internes Feld der
+ * BLZ-Datei). Der Wert wird wahrscheinlich nicht oft benötigt, ist aber der
+ * Vollständigkeit halber enthalten. Der Rückgabewert ist ein Array mit zwei
+ * Elementen: im ersten steht die Nummer, im zweiten ein Statuscode. Im Fehlerfall
+ * wird für die Nummer nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * Possible return values (and short description):
+ * 
+ * *  -78  (KEY_NOT_FOUND)                 "Die Suche lieferte kein Ergebnis"
+ * *  -70  (LUT1_FILE_USED)                "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -46  (LUT2_BIC_NOT_INITIALIZED)      "Das Feld BIC wurde nicht initialisiert"
+ * *  -44  (LUT2_NR_NOT_INITIALIZED)       "Das Feld NR wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)          "die Programmbibliothek wurde noch nicht initialisiert"
+ * *  -10  (FILE_READ_ERROR)               "kann Datei nicht lesen"
+ * *   -9  (ERROR_MALLOC)                  "kann keinen Speicher allokieren"
+ * *    1  (OK)                            "ok"
+ * *   26  (OK_SHORT_BIC_USED)             "ok, für den BIC wurde die Zweigstellennummer allerdings durch XXX ersetzt"
+ */
+static VALUE bic_nr_rb(int argc,VALUE* argv,VALUE self)
+{
+   char bic[16],error_msg[512];
+   int retval,nr,filiale,mode;
+
+   get_params_bic(argc,argv,bic,&mode,&filiale,0);
+   nr=bic_nr(bic,mode,filiale,&retval);
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:INT2FIX(nr),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::biq_name( idx)
+ * ===KontoCheckRaw::bic_info( bic [,mode])
+ * =====KontoCheck::biq_name( idx)
+ * 
+ * Diese Funktion liefert den Namen einer Bank. Der Rückgabewert ist ein
+ * Array mit zwei Elementen: im ersten steht ein String mit dem Namen, im
+ * zweiten ein Statuscode. Im Fehlerfall wird für den Namen nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * *  -70  (LUT1_FILE_USED)                "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -51  (LUT2_NAME_NOT_INITIALIZED)     "Das Feld Bankname wurde nicht initialisiert"
+ * *  -46  (LUT2_BIC_NOT_INITIALIZED)      "Das Feld BIC wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)          "die Programmbibliothek wurde noch nicht initialisiert"
+ * *  -10  (FILE_READ_ERROR)               "kann Datei nicht lesen"
+ * *   -9  (ERROR_MALLOC)                  "kann keinen Speicher allokieren"
+ * *    1  (OK)                            "ok"
+ * *   26  (OK_SHORT_BIC_USED)             "ok, für den BIC wurde die Zweigstellennummer allerdings durch XXX ersetzt"
+ */
+static VALUE biq_name_rb(int argc,VALUE* argv,VALUE self)
+{
+   char error_msg[512];
+   const char *name;
+   int retval,idx;
+
+   get_params_bic(argc,argv,NULL,&idx,NULL,1);
+   name=biq_name(idx,&retval);
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:rb_str_new2(name),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::biq_name_kurz( idx)
+ * ===KontoCheckRaw::bic_info( bic [,mode])
+ * =====KontoCheck::biq_name_kurz( idx)
+ * 
+ * Diese Funktion liefert den Kurznamen einer Bank. Der Rückgabewert ist ein
+ * Array mit zwei Elementen: im ersten steht ein String mit dem Namen, im
+ * zweiten ein Statuscode. Im Fehlerfall wird für den Namen nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * *  -70  (LUT1_FILE_USED)                "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -48  (LUT2_NAME_KURZ_NOT_INITIALIZED) "Das Feld Kurzname wurde nicht initialisiert"
+ * *  -46  (LUT2_BIC_NOT_INITIALIZED)      "Das Feld BIC wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)          "die Programmbibliothek wurde noch nicht initialisiert"
+ * *  -10  (FILE_READ_ERROR)               "kann Datei nicht lesen"
+ * *   -9  (ERROR_MALLOC)                  "kann keinen Speicher allokieren"
+ * *    1  (OK)                            "ok"
+ * *   26  (OK_SHORT_BIC_USED)             "ok, für den BIC wurde die Zweigstellennummer allerdings durch XXX ersetzt"
+ */
+static VALUE biq_name_kurz_rb(int argc,VALUE* argv,VALUE self)
+{
+   char error_msg[512];
+   const char *name;
+   int retval,idx;
+
+   get_params_bic(argc,argv,NULL,&idx,NULL,1);
+   name=biq_name_kurz(idx,&retval);
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:rb_str_new2(name),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::biq_ort( idx)
+ * ===KontoCheckRaw::bic_info( bic [,mode])
+ * =====KontoCheck::biq_ort( idx)
+ *
+ * Diese Funktion liefert den Ort einer Bank. Falls der Parameter filiale nicht
+ * angegeben ist, wird der Sitz der Hauptstelle ausgegeben. Der Rückgabewert
+ * ist ein Array mit zwei Elementen: im ersten steht ein String mit dem Namen,
+ * im zweiten ein Statuscode. Im Fehlerfall wird für den Ort nil
+ * zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ *
+ * *  -70  (LUT1_FILE_USED)                "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -49  (LUT2_ORT_NOT_INITIALIZED)   "Das Feld Ort wurde nicht initialisiert"
+ * *  -46  (LUT2_BIC_NOT_INITIALIZED)      "Das Feld BIC wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)          "die Programmbibliothek wurde noch nicht initialisiert"
+ * *  -10  (FILE_READ_ERROR)               "kann Datei nicht lesen"
+ * *   -9  (ERROR_MALLOC)                  "kann keinen Speicher allokieren"
+ * *    1  (OK)                            "ok"
+ * *   26  (OK_SHORT_BIC_USED)             "ok, für den BIC wurde die Zweigstellennummer allerdings durch XXX ersetzt"
+ */
+static VALUE biq_ort_rb(int argc,VALUE* argv,VALUE self)
+{
+   char error_msg[512];
+   const char *ort;
+   int retval,idx;
+
+   get_params_bic(argc,argv,NULL,&idx,NULL,1);
+   ort=biq_ort(idx,&retval);
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:rb_str_new2(ort),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::biq_plz( idx)
+ * ===KontoCheckRaw::bic_info( bic [,mode])
+ * =====KontoCheck::biq_plz( idx)
+ * 
+ * Diese Funktion liefert die Postleitzahl einer Bank. Falls der Parameter
+ * filiale nicht angegeben ist, wird die PLZ der Hauptstelle ausgegeben. Der
+ * Rückgabewert ist ein Array mit zwei Elementen: im ersten steht die PLZ, im
+ * zweiten ein Statuscode. Im Fehlerfall wird für die PLZ nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * *  -70  (LUT1_FILE_USED)                "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -50  (LUT2_PLZ_NOT_INITIALIZED)      "Das Feld PLZ wurde nicht initialisiert"
+ * *  -46  (LUT2_BIC_NOT_INITIALIZED)      "Das Feld BIC wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)          "die Programmbibliothek wurde noch nicht initialisiert"
+ * *  -10  (FILE_READ_ERROR)               "kann Datei nicht lesen"
+ * *   -9  (ERROR_MALLOC)                  "kann keinen Speicher allokieren"
+ * *    1  (OK)                            "ok"
+ * *   26  (OK_SHORT_BIC_USED)             "ok, für den BIC wurde die Zweigstellennummer allerdings durch XXX ersetzt"
+ */
+static VALUE biq_plz_rb(int argc,VALUE* argv,VALUE self)
+{
+   char error_msg[512];
+   int retval,plz,idx;
+
+   get_params_bic(argc,argv,NULL,&idx,NULL,1);
+   plz=biq_plz(idx,&retval);
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:INT2FIX(plz),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::biq_pz( bic)
+ * ===KontoCheckRaw::bic_info( bic [,mode])
+ * =====KontoCheck::biq_pz( bic)
+ * 
+ * Diese Funktion liefert die Prüfziffer einer Bank. Die Funktion unterstützt
+ * keine Filialen; zu jeder bic kann es in der LUT-Datei nur eine
+ * Prüfziffermethode geben. Der Rückgabewert ist ein Array mit zwei Elementen:
+ * im ersten steht die Prüfziffer, im zweiten ein Statuscode. Im Fehlerfall
+ * wird für den Prüfziffer nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * *  -70  (LUT1_FILE_USED)                "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -46  (LUT2_BIC_NOT_INITIALIZED)      "Das Feld BIC wurde nicht initialisiert"
+ * *  -45  (LUT2_PZ_NOT_INITIALIZED)       "Das Feld Prüfziffer wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)          "die Programmbibliothek wurde noch nicht initialisiert"
+ * *  -10  (FILE_READ_ERROR)               "kann Datei nicht lesen"
+ * *   -9  (ERROR_MALLOC)                  "kann keinen Speicher allokieren"
+ * *    1  (OK)                            "ok"
+ * *   26  (OK_SHORT_BIC_USED)             "ok, für den BIC wurde die Zweigstellennummer allerdings durch XXX ersetzt"
+ */
+static VALUE biq_pz_rb(int argc,VALUE* argv,VALUE self)
+{
+   char error_msg[512];
+   int retval,pz,idx;
+
+   get_params_bic(argc,argv,NULL,&idx,NULL,1);
+   pz=biq_pz(idx,&retval);
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:INT2FIX(pz),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::biq_bic( idx)
+ * ===KontoCheckRaw::bic_info( bic [,mode])
+ * =====KontoCheck::biq_bic( idx)
+ * 
+ * Diese Funktion liefert den BIC (Bank Identifier Code) einer Bank. Der
+ * Rückgabewert ist ein Array mit zwei Elementen: im ersten steht ein String
+ * mit dem BIC, im zweiten ein Statuscode. Im Fehlerfall wird für den BIC
+ * nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * *  -70  (LUT1_FILE_USED)                "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -46  (LUT2_BIC_NOT_INITIALIZED)      "Das Feld BIC wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)          "die Programmbibliothek wurde noch nicht initialisiert"
+ * *  -10  (FILE_READ_ERROR)               "kann Datei nicht lesen"
+ * *   -9  (ERROR_MALLOC)                  "kann keinen Speicher allokieren"
+ * *    1  (OK)                            "ok"
+ * *   26  (OK_SHORT_BIC_USED)             "ok, für den BIC wurde die Zweigstellennummer allerdings durch XXX ersetzt"
+ */
+static VALUE biq_bic_rb(int argc,VALUE* argv,VALUE self)
+{
+   char error_msg[512];
+   const char *ptr;
+   int retval,idx;
+
+   get_params_bic(argc,argv,NULL,&idx,NULL,1);
+   ptr=biq_bic(idx,&retval);
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:rb_str_new2(ptr),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::biq_aenderung( idx)
+ * ===KontoCheckRaw::bic_info( bic [,mode])
+ * =====KontoCheck::biq_aenderung( idx)
+ * 
+ * Diese Funktion liefert das  'Änderung' Flag einer Bank (als string).
+ * Mögliche Werte sind: A (Addition), M (Modified), U (Unchanged), D
+ * (Deletion). Der Rückgabewert ist ein Array mit zwei Elementen: im ersten
+ * steht ein String mit dem Änderungsflag, im zweiten ein Statuscode. Im
+ * Fehlerfall wird für das Flag nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * *  -70  (LUT1_FILE_USED)                "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -46  (LUT2_BIC_NOT_INITIALIZED)      "Das Feld BIC wurde nicht initialisiert"
+ * *  -43  (LUT2_AENDERUNG_NOT_INITIALIZED) "Das Feld Änderung wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)          "die Programmbibliothek wurde noch nicht initialisiert"
+ * *  -10  (FILE_READ_ERROR)               "kann Datei nicht lesen"
+ * *   -9  (ERROR_MALLOC)                  "kann keinen Speicher allokieren"
+ * *    1  (OK)                            "ok"
+ * *   26  (OK_SHORT_BIC_USED)             "ok, für den BIC wurde die Zweigstellennummer allerdings durch XXX ersetzt"
+ */
+static VALUE biq_aenderung_rb(int argc,VALUE* argv,VALUE self)
+{
+   char aenderung[2],error_msg[512];
+   int retval,idx;
+
+   get_params_bic(argc,argv,NULL,&idx,NULL,1);
+   *aenderung=biq_aenderung(idx,&retval);
+   aenderung[1]=0;
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:rb_str_new2(aenderung),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::biq_loeschung( idx)
+ * ===KontoCheckRaw::bic_info( bic [,mode])
+ * =====KontoCheck::biq_loeschung( idx)
+ * 
+ * Diese Funktion liefert das Lösch-Flag für eine Bank zurück (als Integer;
+ * mögliche Werte sind 0 und 1). Der Rückgabewert ist ein Array mit zwei
+ * Elementen: im ersten steht das Flag, im zweiten ein Statuscode. Im
+ * Fehlerfall wird für das Flag nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * *  -70  (LUT1_FILE_USED)                "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -46  (LUT2_BIC_NOT_INITIALIZED)      "Das Feld BIC wurde nicht initialisiert"
+ * *  -42  (LUT2_LOESCHUNG_NOT_INITIALIZED) "Das Feld Löschung wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)          "die Programmbibliothek wurde noch nicht initialisiert"
+ * *  -10  (FILE_READ_ERROR)               "kann Datei nicht lesen"
+ * *   -9  (ERROR_MALLOC)                  "kann keinen Speicher allokieren"
+ * *    1  (OK)                            "ok"
+ * *   26  (OK_SHORT_BIC_USED)             "ok, für den BIC wurde die Zweigstellennummer allerdings durch XXX ersetzt"
+ */
+static VALUE biq_loeschung_rb(int argc,VALUE* argv,VALUE self)
+{
+   char error_msg[512];
+   int retval,loeschung,idx;
+
+   get_params_bic(argc,argv,NULL,&idx,NULL,1);
+   loeschung=biq_loeschung(idx,&retval)-'0';
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:INT2FIX(loeschung),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::biq_nachfolge_blz( idx)
+ * ===KontoCheckRaw::bic_info( bic [,mode])
+ * =====KontoCheck::biq_nachfolge_blz( idx)
+ * 
+ * Diese Funktion liefert die Nachfolge-BLZ für eine Bank, die gelöscht werden
+ * soll (bei der das 'Löschung' Flag 1 ist). Der Rückgabewert ist ein Array mit
+ * zwei Elementen: im ersten steht die Nachfolge-BLZ, im zweiten ein Statuscode. Im
+ * Fehlerfall wird für die Nachfolge-BLZ nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * *  -70  (LUT1_FILE_USED)                "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -46  (LUT2_BIC_NOT_INITIALIZED)      "Das Feld BIC wurde nicht initialisiert"
+ * *  -41  (LUT2_NACHFOLGE_BLZ_NOT_INITIALIZED) "Das Feld Nachfolge-BLZ wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)          "die Programmbibliothek wurde noch nicht initialisiert"
+ * *  -10  (FILE_READ_ERROR)               "kann Datei nicht lesen"
+ * *   -9  (ERROR_MALLOC)                  "kann keinen Speicher allokieren"
+ * *    1  (OK)                            "ok"
+ * *   26  (OK_SHORT_BIC_USED)             "ok, für den BIC wurde die Zweigstellennummer allerdings durch XXX ersetzt"
+ */
+static VALUE biq_nachfolge_blz_rb(int argc,VALUE* argv,VALUE self)
+{
+   char error_msg[512];
+   int retval,n_blz,idx;
+
+   get_params_bic(argc,argv,NULL,&idx,NULL,1);
+   n_blz=biq_nachfolge_blz(idx,&retval);
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:INT2FIX(n_blz),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::biq_pan( idx)
+ * ===KontoCheckRaw::bic_info( bic [,mode])
+ * =====KontoCheck::biq_pan( idx)
+ * 
+ * Diese Funktion liefert den PAN (Primary Account Number) einer Bank. Der
+ * Rückgabewert ist ein Array mit zwei Elementen: im ersten steht der PAN, im
+ * zweiten ein Statuscode. Im Fehlerfall wird für den PAN nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * *  -70  (LUT1_FILE_USED)                "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -47  (LUT2_PAN_NOT_INITIALIZED)      "Das Feld PAN wurde nicht initialisiert"
+ * *  -46  (LUT2_BIC_NOT_INITIALIZED)      "Das Feld BIC wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)          "die Programmbibliothek wurde noch nicht initialisiert"
+ * *  -10  (FILE_READ_ERROR)               "kann Datei nicht lesen"
+ * *   -9  (ERROR_MALLOC)                  "kann keinen Speicher allokieren"
+ * *    1  (OK)                            "ok"
+ * *   26  (OK_SHORT_BIC_USED)             "ok, für den BIC wurde die Zweigstellennummer allerdings durch XXX ersetzt"
+ */
+static VALUE biq_pan_rb(int argc,VALUE* argv,VALUE self)
+{
+   char error_msg[512];
+   int retval,pan,idx;
+
+   get_params_bic(argc,argv,NULL,&idx,NULL,1);
+   pan=biq_pan(idx,&retval);
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:INT2FIX(pan),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::biq_nr( idx)
+ * ===KontoCheckRaw::bic_info( bic [,mode])
+ * =====KontoCheck::biq_nr( idx)
+ * 
+ * Diese Funktion liefert die laufende Nummer einer Bank (internes Feld der
+ * BLZ-Datei). Der Wert wird wahrscheinlich nicht oft benötigt, ist aber der
+ * Vollständigkeit halber enthalten. Der Rückgabewert ist ein Array mit zwei
+ * Elementen: im ersten steht die Nummer, im zweiten ein Statuscode. Im Fehlerfall
+ * wird für die Nummer nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * Possible return values (and short description):
+ * 
+ * *  -70  (LUT1_FILE_USED)                "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -46  (LUT2_BIC_NOT_INITIALIZED)      "Das Feld BIC wurde nicht initialisiert"
+ * *  -44  (LUT2_NR_NOT_INITIALIZED)       "Das Feld NR wurde nicht initialisiert"
+ * *  -40  (LUT2_NOT_INITIALIZED)          "die Programmbibliothek wurde noch nicht initialisiert"
+ * *  -10  (FILE_READ_ERROR)               "kann Datei nicht lesen"
+ * *   -9  (ERROR_MALLOC)                  "kann keinen Speicher allokieren"
+ * *    1  (OK)                            "ok"
+ * *   26  (OK_SHORT_BIC_USED)             "ok, für den BIC wurde die Zweigstellennummer allerdings durch XXX ersetzt"
+ */
+static VALUE biq_nr_rb(int argc,VALUE* argv,VALUE self)
+{
+   char error_msg[512];
+   int retval,nr,idx;
+
+   get_params_bic(argc,argv,NULL,&idx,NULL,1);
+   nr=biq_nr(idx,&retval);
+   if(retval<0 && retval!=KEY_NOT_FOUND)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:INT2FIX(nr),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::iban_name( iban [,filiale])
+ * ===KontoCheckRaw::bic_info( bic [,mode])
+ * =====KontoCheck::iban_name( iban [,filiale])
+ * 
+ * Diese Funktion liefert den Namen einer Bank. Der Rückgabewert ist ein
+ * Array mit zwei Elementen: im ersten steht ein String mit dem Namen, im
+ * zweiten ein Statuscode. Im Fehlerfall wird für den Namen nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * * -147  (IBAN_ONLY_GERMAN)              "Es werden nur deutsche IBANs unterstützt"
+ * * -121  (INVALID_IBAN_LENGTH)           "Die Länge der IBAN für das angegebene Länderkürzel ist falsch"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -51  (LUT2_NAME_NOT_INITIALIZED)     "Das Feld Bankname wurde nicht initialisiert"
+ * *   -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
+ * *   -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
+ * *    1  (OK)                            "ok"
+ */
+static VALUE iban_name_rb(int argc,VALUE* argv,VALUE self)
+{
+   char iban[64],error_msg[512];
+   const char *name;
+   int retval,filiale;
+
+   get_params_bic(argc,argv,iban,&filiale,NULL,1);
+   name=iban_name(iban,filiale,&retval);
+   if(retval==LUT2_BLZ_NOT_INITIALIZED || retval==LUT2_NAME_NOT_INITIALIZED)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:rb_str_new2(name),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::iban_name_kurz( iban [,filiale])
+ * =====KontoCheck::iban_name_kurz( iban [,filiale])
+ * 
+ * Diese Funktion liefert den Kurznamen einer Bank. Der Rückgabewert ist ein
+ * Array mit zwei Elementen: im ersten steht ein String mit dem Namen, im
+ * zweiten ein Statuscode. Im Fehlerfall wird für den Namen nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * * -147  (IBAN_ONLY_GERMAN)              "Es werden nur deutsche IBANs unterstützt"
+ * * -121  (INVALID_IBAN_LENGTH)           "Die Länge der IBAN für das angegebene Länderkürzel ist falsch"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *   -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
+ * *   -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
+ * *    1  (OK)                            "ok"
+ */
+static VALUE iban_name_kurz_rb(int argc,VALUE* argv,VALUE self)
+{
+   char iban[64],error_msg[512];
+   const char *name;
+   int retval,filiale;
+
+   get_params_bic(argc,argv,iban,&filiale,NULL,3);
+   name=iban_name_kurz(iban,filiale,&retval);
+   if(retval==LUT2_BLZ_NOT_INITIALIZED || retval==LUT2_NAME_KURZ_NOT_INITIALIZED)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:rb_str_new2(name),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::iban_ort( iban [,filiale])
+ * =====KontoCheck::iban_ort( iban [,filiale])
+ *
+ * Diese Funktion liefert den Ort einer Bank. Falls der Parameter filiale nicht
+ * angegeben ist, wird der Sitz der Hauptstelle ausgegeben. Der Rückgabewert
+ * ist ein Array mit zwei Elementen: im ersten steht ein String mit dem Namen,
+ * im zweiten ein Statuscode. Im Fehlerfall wird für den Ort nil
+ * zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ *
+ * * -147  (IBAN_ONLY_GERMAN)           "Es werden nur deutsche IBANs unterstützt"
+ * * -121  (INVALID_IBAN_LENGTH)        "Die Länge der IBAN für das angegebene Länderkürzel ist falsch"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)   "Das Feld BLZ wurde nicht initialisiert"
+ * *  -49  (LUT2_ORT_NOT_INITIALIZED)   "Das Feld Ort wurde nicht initialisiert"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)    "Der Index für die Filiale ist ungültig"
+ * *   -5  (INVALID_BLZ_LENGTH)         "die Bankleitzahl ist nicht achtstellig"
+ * *   -4  (INVALID_BLZ)                "die Bankleitzahl ist ungültig"
+ * *    1  (OK)                         "ok"
+ */
+static VALUE iban_ort_rb(int argc,VALUE* argv,VALUE self)
+{
+   char iban[64],error_msg[512];
+   const char *ort;
+   int retval,filiale;
+
+   get_params_bic(argc,argv,iban,&filiale,NULL,3);
+   ort=iban_ort(iban,filiale,&retval);
+   if(retval==LUT2_BLZ_NOT_INITIALIZED || retval==LUT2_ORT_NOT_INITIALIZED)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:rb_str_new2(ort),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::iban_plz( iban [,filiale])
+ * =====KontoCheck::iban_plz( iban [,filiale])
+ * 
+ * Diese Funktion liefert die Postleitzahl einer Bank. Falls der Parameter
+ * filiale nicht angegeben ist, wird die PLZ der Hauptstelle ausgegeben. Der
+ * Rückgabewert ist ein Array mit zwei Elementen: im ersten steht die PLZ, im
+ * zweiten ein Statuscode. Im Fehlerfall wird für die PLZ nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * * -147  (IBAN_ONLY_GERMAN)              "Es werden nur deutsche IBANs unterstützt"
+ * * -121  (INVALID_IBAN_LENGTH)           "Die Länge der IBAN für das angegebene Länderkürzel ist falsch"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -50  (LUT2_PLZ_NOT_INITIALIZED)      "Das Feld PLZ wurde nicht initialisiert"
+ * *   -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
+ * *   -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
+ * *    1  (OK)                            "ok"
+ */
+static VALUE iban_plz_rb(int argc,VALUE* argv,VALUE self)
+{
+   char iban[64],error_msg[512];
+   int retval,plz,filiale;
+
+   get_params_bic(argc,argv,iban,&filiale,NULL,3);
+   plz=iban_plz(iban,filiale,&retval);
+   if(retval==LUT2_BLZ_NOT_INITIALIZED || retval==LUT2_PLZ_NOT_INITIALIZED)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:INT2FIX(plz),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::iban_pz( iban)
+ * =====KontoCheck::iban_pz( iban)
+ * 
+ * Diese Funktion liefert die Prüfziffer einer Bank. Die Funktion unterstützt
+ * keine Filialen; zu jeder BLZ kann es in der LUT-Datei nur eine
+ * Prüfziffermethode geben. Der Rückgabewert ist ein Array mit zwei Elementen:
+ * im ersten steht die Prüfziffer, im zweiten ein Statuscode. Im Fehlerfall
+ * wird für den Prüfziffer nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * * -147  (IBAN_ONLY_GERMAN)              "Es werden nur deutsche IBANs unterstützt"
+ * * -121  (INVALID_IBAN_LENGTH)           "Die Länge der IBAN für das angegebene Länderkürzel ist falsch"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -45  (LUT2_PZ_NOT_INITIALIZED)       "Das Feld Prüfziffer wurde nicht initialisiert"
+ * *   -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
+ * *   -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
+ * *    1  (OK)                            "ok"
+ */
+static VALUE iban_pz_rb(int argc,VALUE* argv,VALUE self)
+{
+   char iban[64],error_msg[512];
+   int retval,pz,filiale;
+
+   get_params_bic(argc,argv,iban,&filiale,NULL,3);
+   pz=iban_pz(iban,0,&retval);
+   if(retval==LUT2_BLZ_NOT_INITIALIZED || retval==LUT2_PZ_NOT_INITIALIZED)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:INT2FIX(pz),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::iban_bic( iban [,filiale])
+ * =====KontoCheck::iban_bic( iban [,filiale])
+ * 
+ * Diese Funktion liefert den BIC (Bank Identifier Code) einer Bank. Der
+ * Rückgabewert ist ein Array mit zwei Elementen: im ersten steht ein String
+ * mit dem BIC, im zweiten ein Statuscode. Im Fehlerfall wird für den BIC
+ * nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * * -147  (IBAN_ONLY_GERMAN)              "Es werden nur deutsche IBANs unterstützt"
+ * * -121  (INVALID_IBAN_LENGTH)           "Die Länge der IBAN für das angegebene Länderkürzel ist falsch"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -46  (LUT2_BIC_NOT_INITIALIZED)      "Das Feld BIC wurde nicht initialisiert"
+ * *   -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
+ * *   -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
+ * *    1  (OK)                            "ok"
+ */
+static VALUE iban_bic_rb(int argc,VALUE* argv,VALUE self)
+{
+   char iban[64],error_msg[512];
+   const char *ptr;
+   int retval,filiale;
+
+   get_params_bic(argc,argv,iban,&filiale,NULL,3);
+   ptr=iban_bic(iban,filiale,&retval);
+   if(retval==LUT2_BLZ_NOT_INITIALIZED || retval==LUT2_BIC_NOT_INITIALIZED)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:rb_str_new2(ptr),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::iban_aenderung( iban [,filiale])
+ * =====KontoCheck::iban_aenderung( iban [,filiale])
+ * 
+ * Diese Funktion liefert das  'Änderung' Flag einer Bank (als string).
+ * Mögliche Werte sind: A (Addition), M (Modified), U (Unchanged), D
+ * (Deletion). Der Rückgabewert ist ein Array mit zwei Elementen: im ersten
+ * steht ein String mit dem Änderungsflag, im zweiten ein Statuscode. Im
+ * Fehlerfall wird für das Flag nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * * -147  (IBAN_ONLY_GERMAN)              "Es werden nur deutsche IBANs unterstützt"
+ * * -121  (INVALID_IBAN_LENGTH)           "Die Länge der IBAN für das angegebene Länderkürzel ist falsch"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -43  (LUT2_AENDERUNG_NOT_INITIALIZED) "Das Feld Änderung wurde nicht initialisiert"
+ * *   -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
+ * *   -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
+ * *    1  (OK)                            "ok"
+ */
+static VALUE iban_aenderung_rb(int argc,VALUE* argv,VALUE self)
+{
+   char iban[64],aenderung[2],error_msg[512];
+   int retval,filiale;
+
+   get_params_bic(argc,argv,iban,&filiale,NULL,3);
+   *aenderung=iban_aenderung(iban,filiale,&retval);
+   aenderung[1]=0;
+   if(retval==LUT2_BLZ_NOT_INITIALIZED || retval==LUT2_AENDERUNG_NOT_INITIALIZED)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:rb_str_new2(aenderung),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::iban_loeschung( iban [,filiale])
+ * =====KontoCheck::iban_loeschung( iban [,filiale])
+ * 
+ * Diese Funktion liefert das Lösch-Flag für eine Bank zurück (als Integer;
+ * mögliche Werte sind 0 und 1). Der Rückgabewert ist ein Array mit zwei
+ * Elementen: im ersten steht das Flag, im zweiten ein Statuscode. Im
+ * Fehlerfall wird für das Flag nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * * -147  (IBAN_ONLY_GERMAN)              "Es werden nur deutsche IBANs unterstützt"
+ * * -121  (INVALID_IBAN_LENGTH)           "Die Länge der IBAN für das angegebene Länderkürzel ist falsch"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -42  (LUT2_LOESCHUNG_NOT_INITIALIZED) "Das Feld Löschung wurde nicht initialisiert"
+ * *   -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
+ * *   -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
+ * *    1  (OK)                            "ok"
+ */
+static VALUE iban_loeschung_rb(int argc,VALUE* argv,VALUE self)
+{
+   char iban[64],error_msg[512];
+   int retval,loeschung,filiale;
+
+   get_params_bic(argc,argv,iban,&filiale,NULL,3);
+   loeschung=iban_loeschung(iban,filiale,&retval)-'0';
+   if(retval==LUT2_BLZ_NOT_INITIALIZED || retval==LUT2_LOESCHUNG_NOT_INITIALIZED)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:INT2FIX(loeschung),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::iban_nachfolge_iban( iban [,filiale])
+ * =====KontoCheck::iban_nachfolge_iban( iban [,filiale])
+ * 
+ * Diese Funktion liefert die Nachfolge-BLZ für eine Bank, die gelöscht werden
+ * soll (bei der das 'Löschung' Flag 1 ist). Der Rückgabewert ist ein Array mit
+ * zwei Elementen: im ersten steht die Nachfolge-BLZ, im zweiten ein Statuscode. Im
+ * Fehlerfall wird für die Nachfolge-BLZ nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * * -147  (IBAN_ONLY_GERMAN)              "Es werden nur deutsche IBANs unterstützt"
+ * * -121  (INVALID_IBAN_LENGTH)           "Die Länge der IBAN für das angegebene Länderkürzel ist falsch"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -41  (LUT2_NACHFOLGE_BLZ_NOT_INITIALIZED) "Das Feld Nachfolge-BLZ wurde nicht initialisiert"
+ * *   -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
+ * *   -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
+ * *    1  (OK)                            "ok"
+ */
+static VALUE iban_nachfolge_blz_rb(int argc,VALUE* argv,VALUE self)
+{
+   char iban[64],error_msg[512];
+   int retval,n_iban,filiale;
+
+   get_params_bic(argc,argv,iban,&filiale,NULL,3);
+   n_iban=iban_nachfolge_blz(iban,filiale,&retval);
+   if(retval==LUT2_BLZ_NOT_INITIALIZED || retval==LUT2_NACHFOLGE_BLZ_NOT_INITIALIZED)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:INT2FIX(n_iban),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::iban_pan( iban [,filiale])
+ * =====KontoCheck::iban_pan( iban [,filiale])
+ * 
+ * Diese Funktion liefert den PAN (Primary Account Number) einer Bank. Der
+ * Rückgabewert ist ein Array mit zwei Elementen: im ersten steht der PAN, im
+ * zweiten ein Statuscode. Im Fehlerfall wird für den PAN nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * * -147  (IBAN_ONLY_GERMAN)              "Es werden nur deutsche IBANs unterstützt"
+ * * -121  (INVALID_IBAN_LENGTH)           "Die Länge der IBAN für das angegebene Länderkürzel ist falsch"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -47  (LUT2_PAN_NOT_INITIALIZED)      "Das Feld PAN wurde nicht initialisiert"
+ * *   -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
+ * *   -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
+ * *    1  (OK)                            "ok"
+ */
+static VALUE iban_pan_rb(int argc,VALUE* argv,VALUE self)
+{
+   char iban[64],error_msg[512];
+   int retval,pan,filiale;
+
+   get_params_bic(argc,argv,iban,&filiale,NULL,3);
+   pan=iban_pan(iban,filiale,&retval);
+   if(retval==LUT2_BLZ_NOT_INITIALIZED || retval==LUT2_PAN_NOT_INITIALIZED)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:INT2FIX(pan),INT2FIX(retval));
+}
+
+/**
+ * ===KontoCheckRaw::iban_nr( iban [,filiale])
+ * =====KontoCheck::iban_nr( iban [,filiale])
+ * 
+ * Diese Funktion liefert die laufende Nummer einer Bank (internes Feld der
+ * BLZ-Datei). Der Wert wird wahrscheinlich nicht oft benötigt, ist aber der
+ * Vollständigkeit halber enthalten. Der Rückgabewert ist ein Array mit zwei
+ * Elementen: im ersten steht die Nummer, im zweiten ein Statuscode. Im Fehlerfall
+ * wird für die Nummer nil zurückgegeben.
+ * 
+ * Mögliche Statuscodes:
+ * 
+ * Possible return values (and short description):
+ * 
+ * * -147  (IBAN_ONLY_GERMAN)              "Es werden nur deutsche IBANs unterstützt"
+ * * -121  (INVALID_IBAN_LENGTH)           "Die Länge der IBAN für das angegebene Länderkürzel ist falsch"
+ * *  -55  (LUT2_INDEX_OUT_OF_RANGE)       "Der Index für die Filiale ist ungültig"
+ * *  -53  (LUT2_BLZ_NOT_INITIALIZED)      "Das Feld BLZ wurde nicht initialisiert"
+ * *  -44  (LUT2_NR_NOT_INITIALIZED)       "Das Feld NR wurde nicht initialisiert"
+ * *   -5  (INVALID_BLZ_LENGTH)            "die Bankleitzahl ist nicht achtstellig"
+ * *   -4  (INVALID_BLZ)                   "die Bankleitzahl ist ungültig"
+ * *    1  (OK)                            "ok"
+ */
+static VALUE iban_nr_rb(int argc,VALUE* argv,VALUE self)
+{
+   char iban[64],error_msg[512];
+   int retval,nr,filiale;
+
+   get_params_bic(argc,argv,iban,&filiale,NULL,3);
+   nr=iban_nr(iban,filiale,&retval);
+   if(retval==LUT2_BLZ_NOT_INITIALIZED || retval==LUT2_NR_NOT_INITIALIZED)RUNTIME_ERROR(retval);
+   return rb_ary_new3(2,retval<=0?Qnil:INT2FIX(nr),INT2FIX(retval));
+}
+
+
+/**
  * Die Suchroutinen der C-Bibliothek sind eher Low-Level Routinen und ohne
  * einen Blick in die Sourcen nicht intuitiv nutzbar ;-), daher hier zunächst
  * eine kurze Einführung.
@@ -2993,7 +4217,7 @@ void Init_konto_check_raw()
  * 
  * <b>ATTENTION:</b> There are a few important changes in the API between
  * version 0.0.2 (version by Peter Horn/Provideal), version 0.0.6 (jeanmartin)
- * and this version (V. 5.3 from 2014-03-03):
+ * and this version (V. 5.4 from 2014-06-02):
  * 
  * * The function KontoCheck::load_bank_data() is no longer used; it is
  *   replaced by KontoCheck::init() and KontoCheck::generate_lutfile().
@@ -3088,6 +4312,7 @@ void Init_konto_check_raw()
    rb_define_module_function(KontoCheck,"bank_valid",bank_valid,-1);
    rb_define_module_function(KontoCheck,"bank_filialen",bank_filialen,-1);
    rb_define_module_function(KontoCheck,"bank_alles",bank_alles,-1);
+
    rb_define_module_function(KontoCheck,"bank_name",bank_name,-1);
    rb_define_module_function(KontoCheck,"bank_name_kurz",bank_name_kurz,-1);
    rb_define_module_function(KontoCheck,"bank_plz",bank_plz,-1);
@@ -3099,6 +4324,44 @@ void Init_konto_check_raw()
    rb_define_module_function(KontoCheck,"bank_aenderung",bank_aenderung,-1);
    rb_define_module_function(KontoCheck,"bank_loeschung",bank_loeschung,-1);
    rb_define_module_function(KontoCheck,"bank_nachfolge_blz",bank_nachfolge_blz,-1);
+
+   rb_define_module_function(KontoCheck,"bic_name",bic_name_rb,-1);
+   rb_define_module_function(KontoCheck,"bic_name_kurz",bic_name_kurz_rb,-1);
+   rb_define_module_function(KontoCheck,"bic_plz",bic_plz_rb,-1);
+   rb_define_module_function(KontoCheck,"bic_ort",bic_ort_rb,-1);
+   rb_define_module_function(KontoCheck,"bic_pan",bic_pan_rb,-1);
+   rb_define_module_function(KontoCheck,"bic_bic",bic_bic_rb,-1);
+   rb_define_module_function(KontoCheck,"bic_nr",bic_nr_rb,-1);
+   rb_define_module_function(KontoCheck,"bic_pz",bic_pz_rb,-1);
+   rb_define_module_function(KontoCheck,"bic_aenderung",bic_aenderung_rb,-1);
+   rb_define_module_function(KontoCheck,"bic_loeschung",bic_loeschung_rb,-1);
+   rb_define_module_function(KontoCheck,"bic_nachfolge_blz",bic_nachfolge_blz_rb,-1);
+
+   rb_define_module_function(KontoCheck,"bic_info",bic_info_rb,-1);
+   rb_define_module_function(KontoCheck,"biq_name",biq_name_rb,-1);
+   rb_define_module_function(KontoCheck,"biq_name_kurz",biq_name_kurz_rb,-1);
+   rb_define_module_function(KontoCheck,"biq_plz",biq_plz_rb,-1);
+   rb_define_module_function(KontoCheck,"biq_ort",biq_ort_rb,-1);
+   rb_define_module_function(KontoCheck,"biq_pan",biq_pan_rb,-1);
+   rb_define_module_function(KontoCheck,"biq_bic",biq_bic_rb,-1);
+   rb_define_module_function(KontoCheck,"biq_nr",biq_nr_rb,-1);
+   rb_define_module_function(KontoCheck,"biq_pz",biq_pz_rb,-1);
+   rb_define_module_function(KontoCheck,"biq_aenderung",biq_aenderung_rb,-1);
+   rb_define_module_function(KontoCheck,"biq_loeschung",biq_loeschung_rb,-1);
+   rb_define_module_function(KontoCheck,"biq_nachfolge_blz",biq_nachfolge_blz_rb,-1);
+
+   rb_define_module_function(KontoCheck,"iban_name",iban_name_rb,-1);
+   rb_define_module_function(KontoCheck,"iban_name_kurz",iban_name_kurz_rb,-1);
+   rb_define_module_function(KontoCheck,"iban_plz",iban_plz_rb,-1);
+   rb_define_module_function(KontoCheck,"iban_ort",iban_ort_rb,-1);
+   rb_define_module_function(KontoCheck,"iban_pan",iban_pan_rb,-1);
+   rb_define_module_function(KontoCheck,"iban_bic",iban_bic_rb,-1);
+   rb_define_module_function(KontoCheck,"iban_nr",iban_nr_rb,-1);
+   rb_define_module_function(KontoCheck,"iban_pz",iban_pz_rb,-1);
+   rb_define_module_function(KontoCheck,"iban_aenderung",iban_aenderung_rb,-1);
+   rb_define_module_function(KontoCheck,"iban_loeschung",iban_loeschung_rb,-1);
+   rb_define_module_function(KontoCheck,"iban_nachfolge_blz",iban_nachfolge_blz_rb,-1);
+
    rb_define_module_function(KontoCheck,"dump_lutfile",dump_lutfile_rb,-1);
    rb_define_module_function(KontoCheck,"lut_blocks",lut_blocks_rb,-1);
    rb_define_module_function(KontoCheck,"lut_blocks1",lut_blocks1_rb,-1);
@@ -3134,6 +4397,10 @@ void Init_konto_check_raw()
    rb_define_module_function(KontoCheck,"load_bank_data",load_bank_data,1);
 
       /* Rückgabewerte der konto_check Bibliothek */
+      /* (-149) Ungültiger Index für die biq_*() Funktionen */
+   rb_define_const(KontoCheck,"INVALID_BIQ_INDEX",INT2FIX(INVALID_BIQ_INDEX));
+      /* (-148) Der Array-Index liegt außerhalb des gültigen Bereichs */
+   rb_define_const(KontoCheck,"ARRAY_INDEX_OUT_OF_RANGE",INT2FIX(ARRAY_INDEX_OUT_OF_RANGE));
       /* (-147) Es werden nur deutsche IBANs unterstützt */
    rb_define_const(KontoCheck,"IBAN_ONLY_GERMAN",INT2FIX(IBAN_ONLY_GERMAN));
       /* (-146) Falscher Parametertyp für die Funktion */
@@ -3220,56 +4487,6 @@ void Init_konto_check_raw()
    rb_define_const(KontoCheck,"KTO_CHECK_KEY_NOT_FOUND",INT2FIX(KTO_CHECK_KEY_NOT_FOUND));
       /* (-105) Beide Datensätze sind nicht mehr gültig, dieser ist aber jünger als der andere */
    rb_define_const(KontoCheck,"LUT2_NO_LONGER_VALID_BETTER",INT2FIX(LUT2_NO_LONGER_VALID_BETTER));
-      /* (-104) Die Auftraggeber-Kontonummer des C-Datensatzes unterscheidet sich von der des A-Satzes */
-   rb_define_const(KontoCheck,"DTA_SRC_KTO_DIFFERENT",INT2FIX(DTA_SRC_KTO_DIFFERENT));
-      /* (-103) Die Auftraggeber-Bankleitzahl des C-Datensatzes unterscheidet sich von der des A-Satzes */
-   rb_define_const(KontoCheck,"DTA_SRC_BLZ_DIFFERENT",INT2FIX(DTA_SRC_BLZ_DIFFERENT));
-      /* (-102) Die DTA-Datei enthält (unzulässige) Zeilenvorschübe */
-   rb_define_const(KontoCheck,"DTA_CR_LF_IN_FILE",INT2FIX(DTA_CR_LF_IN_FILE));
-      /* (-101) ungültiger Typ bei einem Erweiterungsblock eines C-Datensatzes */
-   rb_define_const(KontoCheck,"DTA_INVALID_C_EXTENSION",INT2FIX(DTA_INVALID_C_EXTENSION));
-      /* (-100) Es wurde ein C-Datensatz erwartet, jedoch ein E-Satz gefunden */
-   rb_define_const(KontoCheck,"DTA_FOUND_SET_A_NOT_C",INT2FIX(DTA_FOUND_SET_A_NOT_C));
-      /* (-99) Es wurde ein C-Datensatz erwartet, jedoch ein E-Satz gefunden */
-   rb_define_const(KontoCheck,"DTA_FOUND_SET_E_NOT_C",INT2FIX(DTA_FOUND_SET_E_NOT_C));
-      /* (-98) Es wurde ein C-Datensatzerweiterung erwartet, jedoch ein C-Satz gefunden */
-   rb_define_const(KontoCheck,"DTA_FOUND_SET_C_NOT_EXTENSION",INT2FIX(DTA_FOUND_SET_C_NOT_EXTENSION));
-      /* (-97) Es wurde ein C-Datensatzerweiterung erwartet, jedoch ein E-Satz gefunden */
-   rb_define_const(KontoCheck,"DTA_FOUND_SET_E_NOT_EXTENSION",INT2FIX(DTA_FOUND_SET_E_NOT_EXTENSION));
-      /* (-96) Die Anzahl Erweiterungen paßt nicht zur Blocklänge */
-   rb_define_const(KontoCheck,"DTA_INVALID_EXTENSION_COUNT",INT2FIX(DTA_INVALID_EXTENSION_COUNT));
-      /* (-95) Ungültige Zeichen in numerischem Feld */
-   rb_define_const(KontoCheck,"DTA_INVALID_NUM",INT2FIX(DTA_INVALID_NUM));
-      /* (-94) Ungültige Zeichen im Textfeld */
-   rb_define_const(KontoCheck,"DTA_INVALID_CHARS",INT2FIX(DTA_INVALID_CHARS));
-      /* (-93) Die Währung des DTA-Datensatzes ist nicht Euro */
-   rb_define_const(KontoCheck,"DTA_CURRENCY_NOT_EURO",INT2FIX(DTA_CURRENCY_NOT_EURO));
-      /* (-92) In einem DTA-Datensatz wurde kein Betrag angegeben */
-   rb_define_const(KontoCheck,"DTA_EMPTY_AMOUNT",INT2FIX(DTA_EMPTY_AMOUNT));
-      /* (-91) Ungültiger Textschlüssel in der DTA-Datei */
-   rb_define_const(KontoCheck,"DTA_INVALID_TEXT_KEY",INT2FIX(DTA_INVALID_TEXT_KEY));
-      /* (-90) Für ein (alphanumerisches) Feld wurde kein Wert angegeben */
-   rb_define_const(KontoCheck,"DTA_EMPTY_STRING",INT2FIX(DTA_EMPTY_STRING));
-      /* (-89) Die Startmarkierung des A-Datensatzes wurde nicht gefunden */
-   rb_define_const(KontoCheck,"DTA_MARKER_A_NOT_FOUND",INT2FIX(DTA_MARKER_A_NOT_FOUND));
-      /* (-88) Die Startmarkierung des C-Datensatzes wurde nicht gefunden */
-   rb_define_const(KontoCheck,"DTA_MARKER_C_NOT_FOUND",INT2FIX(DTA_MARKER_C_NOT_FOUND));
-      /* (-87) Die Startmarkierung des E-Datensatzes wurde nicht gefunden */
-   rb_define_const(KontoCheck,"DTA_MARKER_E_NOT_FOUND",INT2FIX(DTA_MARKER_E_NOT_FOUND));
-      /* (-86) Die Satzlänge eines C-Datensatzes muß zwischen 187 und 622 Byte betragen */
-   rb_define_const(KontoCheck,"DTA_INVALID_SET_C_LEN",INT2FIX(DTA_INVALID_SET_C_LEN));
-      /* (-85) Die Satzlänge eines A- bzw. E-Satzes muß 128 Byte betragen */
-   rb_define_const(KontoCheck,"DTA_INVALID_SET_LEN",INT2FIX(DTA_INVALID_SET_LEN));
-      /* (-84) als Währung in der DTA-Datei ist nicht Euro eingetragen */
-   rb_define_const(KontoCheck,"DTA_WAERUNG_NOT_EURO",INT2FIX(DTA_WAERUNG_NOT_EURO));
-      /* (-83) das Ausführungsdatum ist zu früh oder zu spät (max. 15 Tage nach Dateierstellung) */
-   rb_define_const(KontoCheck,"DTA_INVALID_ISSUE_DATE",INT2FIX(DTA_INVALID_ISSUE_DATE));
-      /* (-82) das Datum ist ungültig */
-   rb_define_const(KontoCheck,"DTA_INVALID_DATE",INT2FIX(DTA_INVALID_DATE));
-      /* (-81) Formatfehler in der DTA-Datei */
-   rb_define_const(KontoCheck,"DTA_FORMAT_ERROR",INT2FIX(DTA_FORMAT_ERROR));
-      /* (-80) die DTA-Datei enthält Fehler */
-   rb_define_const(KontoCheck,"DTA_FILE_WITH_ERRORS",INT2FIX(DTA_FILE_WITH_ERRORS));
       /* (-79) ungültiger Suchbereich angegeben (unten>oben) */
    rb_define_const(KontoCheck,"INVALID_SEARCH_RANGE",INT2FIX(INVALID_SEARCH_RANGE));
       /* (-78) Die Suche lieferte kein Ergebnis */

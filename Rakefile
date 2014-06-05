@@ -32,7 +32,7 @@ begin
     gem.homepage = "http://kontocheck.sourceforge.net"
     gem.authors = ["Provideal Systems GmbH","Jan Schwenzien","Michael Plugge"]
     gem.add_development_dependency "thoughtbot-shoulda", ">= 0"
-    gem.version = "5.3.0"
+    gem.version = "5.4.0"
     gem.extra_rdoc_files = [
       "LICENSE",
       "README.textile",
@@ -74,7 +74,7 @@ task :default => :test
 require 'rdoc/task'
 Rake::RDocTask.new do |rdoc|
 #  version = File.exist?('VERSION') ? File.read('VERSION') : ""
-  version = "5.3.0"
+  version = "5.4.0"
 
   rdoc.rdoc_dir = 'rdoc'
   rdoc.title = "konto_check #{version}"

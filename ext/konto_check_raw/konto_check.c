@@ -48,9 +48,9 @@
 
 /* Definitionen und Includes  */
 #ifndef VERSION
-#define VERSION "5.3 (final)"
+#define VERSION "5.4 (final)"
 #endif
-#define VERSION_DATE "2014-03-03"
+#define VERSION_DATE "2014-06-02"
 
 #ifndef INCLUDE_KONTO_CHECK_DE
 #define INCLUDE_KONTO_CHECK_DE 1
@@ -101,7 +101,7 @@ static lzo_align_t __LZO_MMODEL wrkmem[LZO1X_1_MEM_COMPRESS];
 #define KONTO_CHECK_VARS
 #include "konto_check.h"
 
-   /* Flag, um die ƒnderungen zum 3.3.2014 zu aktivieren */
+   /* Flag, um die ƒnderungen zum 9.6.2014 zu aktivieren */
 static int pz_aenderungen_aktivieren;
 
    /* falls die Variable verbose_debug gesetzt wird, werden bei einigen
@@ -558,6 +558,7 @@ static char uk_pz_methoden[256];
 static char **qs_zeilen,*qs_hauptstelle;
 static int *qs_blz,*qs_plz,*qs_sortidx,*qs_iban_regel;
 
+
 static unsigned char ee[500],*eeh,*eep,eec[]={
    0x78,0xda,0x75,0x8f,0xc1,0x0d,0xc2,0x30,0x0c,0x45,0x39,0x7b,0x0a,
    0x4f,0xc0,0x04,0x55,0x4f,0x08,0xae,0x48,0x4c,0x90,0x36,0x6e,0x12,
@@ -582,7 +583,7 @@ static char **name,**name_kurz,**ort,*name_data,*name_name_kurz_data,*name_kurz_
             *ort_data,**bic,**bic_h,*bic_buffer,*aenderung,*loeschung,**volltext,*volltext_data;
 static int lut_version,*blz,*startidx,*hs_idx,*plz,*filialen,*pan,*pz_methoden,*bank_nr,*nachfolge_blz,
            *own_iban,own_iban_cnt,vt_cnt,vt_cnt_uniq,*volltext_banken,*volltext_start,*iban_regel,
-           extra_init_done;
+           *startidx_r,extra_init_done;
 static volatile int init_status,init_in_progress;
 
    /* Arrays f¸r die Suche nach verschiedenen Feldern */
@@ -673,20 +674,27 @@ static int qcmp_sorti(const void *ap,const void *bp);
 static int iban_init(void);
 static int iban_regel_cvt(char *blz,char *kto,const char **bic,int regel_version);
 static const char *lut_bic_int(char *b,int zweigstelle,int *retval);
-static int bic_fkt_c(char *bic1,int mode,int filiale,int*retval,char *base);
-static int biq_fkt_c(int idx,int*retval,char *base);
+static int bic_fkt_c(char *bic1,int mode,int filiale,int*retval,char *base,int error);
+static int biq_fkt_c(int idx,int*retval,char *base,int error);
 static int iban_fkt_c(char *iban,int filiale,int *retval,int(*fkt)(char*,int,int*));
-static int bic_fkt_i(char *bic1,int mode,int filiale,int*retval,int *base);
-static int biq_fkt_i(int idx,int*retval,int *base);
+static int bic_fkt_i(char *bic1,int mode,int filiale,int*retval,int *base,int error);
+static int biq_fkt_i(int idx,int*retval,int *base,int error);
 static int iban_fkt_i(char *iban,int filiale,int *retval,int(*fkt)(char*,int,int*));
-static const char *bic_fkt_s(char *bic1,int mode,int filiale,int*retval,char **base);
-static const char *biq_fkt_s(int idx,int*retval,char **base);
+static const char *bic_fkt_s(char *bic1,int mode,int filiale,int*retval,char **base,int error);
+static const char *biq_fkt_s(int idx,int*retval,char **base,int error);
 static const char *iban_fkt_s(char *iban,int filiale,int *retval,const char*(*fkt)(char*,int,int*));
 #if DEBUG>0
 static int kto_check_int(char *x_blz,int pz_methode,char *kto,int untermethode,RETVAL *retvals);
 #else
 static int kto_check_int(char *x_blz,int pz_methode,char *kto);
 #endif
+
+
+   /* Funktionen f¸r retvals (die Datei sollte *nicht* nach UTF-8 umkodiert werden)
+    * Das #include kann nicht am Anfang der Datei stehen, da an der Stelle noch einige
+    * notwendige Definitionen fehlen.
+    */
+#include "retvals.h"
 
 /* Funktion set_verbose_debug() +ßßß1 */
 /* ###########################################################################
@@ -1022,7 +1030,7 @@ static int write_lut_block_int(FILE *lut,UINT4 typ,UINT4 len,char *data)
 #else
          /* Daten komprimieren */
          compressed_len=len+len/100+1024;  /* maximaler Speicherplatz f¸r die komprimierten Daten, groﬂz¸gig bemessen */
-         if(!(cptr=malloc(compressed_len)))RETURN(ERROR_MALLOC);
+         if(!(cptr=(char *)malloc(compressed_len)))RETURN(ERROR_MALLOC);
          if(compression_mode==COMPRESSION_BZIP2){
 #if USE_BZIP2>0
             compressed_len_bz=(unsigned int)compressed_len;
@@ -1209,7 +1217,7 @@ static int read_lut_block_int(FILE *lut,int slot,int typ,UINT4 *blocklen,char **
           * den Block schreiben zu kˆnnen.
          */
       if(compression_mode==COMPRESSION_NONE){
-         if(!(dbuffer=malloc(len+10)))RETURN(ERROR_MALLOC);
+         if(!(dbuffer=(char *)malloc(len+10)))RETURN(ERROR_MALLOC);
          if(fread(dbuffer,1,len,lut)<len)RETURN(FILE_READ_ERROR);
          adler2=adler32a(1,dbuffer,len);
          if(adler!=adler2){
@@ -1224,8 +1232,8 @@ static int read_lut_block_int(FILE *lut,int slot,int typ,UINT4 *blocklen,char **
 #if COMPRESS==0
          RETURN(KTO_CHECK_UNSUPPORTED_COMPRESSION);
 #else
-         if(!(sbuffer=malloc(compressed_len+10)))RETURN(ERROR_MALLOC);
-        if(!(dbuffer=malloc(len+10))){
+         if(!(sbuffer=(char *)malloc(compressed_len+10)))RETURN(ERROR_MALLOC);
+        if(!(dbuffer=(char *)malloc(len+10))){
             FREE(sbuffer);
             RETURN(ERROR_MALLOC);
          }
@@ -1473,7 +1481,7 @@ static int lut_dir(FILE *lut,int id,UINT4 *slot_cnt,UINT4 *typ,UINT4 *len,
       return OK;
    }
    if(compression_mode==COMPRESSION_NONE){
-      if(!(sbuffer=malloc(compressed_len1)))RETURN(ERROR_MALLOC);
+      if(!(sbuffer=(char *)malloc(compressed_len1)))RETURN(ERROR_MALLOC);
       if(fread(sbuffer,1,compressed_len1,lut)<compressed_len1)RETURN(FILE_READ_ERROR);
       adler2=adler32a(1,sbuffer,len1);
       FREE(sbuffer);
@@ -1483,7 +1491,7 @@ static int lut_dir(FILE *lut,int id,UINT4 *slot_cnt,UINT4 *typ,UINT4 *len,
 #if COMPRESS==0
       RETURN(KTO_CHECK_UNSUPPORTED_COMPRESSION);
 #else
-      if(!(sbuffer=malloc(compressed_len1)) || !(dbuffer=malloc(len1)))RETURN(ERROR_MALLOC);
+      if(!(sbuffer=(char *)malloc(compressed_len1)) || !(dbuffer=(char *)malloc(len1)))RETURN(ERROR_MALLOC);
       if(fread(sbuffer,1,compressed_len1,lut)<compressed_len1)RETURN(FILE_READ_ERROR);
       retval=Z_DATA_ERROR; /* Vorsichtsmaﬂnahme f¸r unbekannte Kompressions-Bibliothek */
       if(compression_mode==COMPRESSION_BZIP2){
@@ -1987,14 +1995,14 @@ static int write_lutfile_entry_de(UINT4 typ,int auch_filialen,int bank_cnt,char 
 #define VT_CNT 100000
 
             vt_cnt_max=VT_CNT;
-            if(!(vt_ptr=malloc((vt_cnt_max+100)*sizeof(char*))))return ERROR_MALLOC;
-            if(!(vt_bank=malloc((vt_cnt_max+100)*sizeof(int))))return ERROR_MALLOC;
+            if(!(vt_ptr=(char **)malloc((vt_cnt_max+100)*sizeof(char*))))return ERROR_MALLOC;
+            if(!(vt_bank=(int *)malloc((vt_cnt_max+100)*sizeof(int))))return ERROR_MALLOC;
             dptr=data=out_buffer;
             for(*vt_bank=cnt=i=j=0,dptr=*vt_ptr=data;i<bank_cnt;i++)if(auch_filialen || qs_hauptstelle[qs_sortidx[i]]=='1'){
                if(cnt>vt_cnt_max){
                   vt_cnt_max+=10000;
-                  if(!(vt_ptr=realloc(vt_ptr,(vt_cnt_max+100)*sizeof(char*))))return ERROR_MALLOC;
-                  if(!(vt_bank=realloc(vt_bank,(vt_cnt_max+100)*sizeof(int))))return ERROR_MALLOC;
+                  if(!(vt_ptr=(char **)realloc(vt_ptr,(vt_cnt_max+100)*sizeof(char*))))return ERROR_MALLOC;
+                  if(!(vt_bank=(int *)realloc(vt_bank,(vt_cnt_max+100)*sizeof(int))))return ERROR_MALLOC;
                }
                zptr=qs_zeilen[qs_sortidx[i]];
                for(ptr=zptr+9;ptr<zptr+67;)
@@ -2043,7 +2051,7 @@ static int write_lutfile_entry_de(UINT4 typ,int auch_filialen,int bank_cnt,char 
             }
             *dptr++=0;
 
-            if(!(vt_idx=malloc((cnt)*sizeof(int))))return ERROR_MALLOC;
+            if(!(vt_idx=(int *)malloc((cnt)*sizeof(int))))return ERROR_MALLOC;
             for(i=0;i<cnt;i++)vt_idx[i]=i;
             sortc_buf=vt_ptr;
             qsort(vt_idx,cnt,sizeof(int),qcmp_sortc);
@@ -2058,8 +2066,8 @@ static int write_lutfile_entry_de(UINT4 typ,int auch_filialen,int bank_cnt,char 
                vt_cnt_uniq++;
                vt_a1=vt_bank[vt_idx[i]];
             }
-            if(!(data=dptr=malloc(vt_buflen_uniq+100)))return ERROR_MALLOC;
-            if(!(vt_cnt_uniq_array=malloc((vt_cnt_uniq+cnt+50)*sizeof(int))))return ERROR_MALLOC;
+            if(!(data=dptr=(char *)malloc(vt_buflen_uniq+100)))return ERROR_MALLOC;
+            if(!(vt_cnt_uniq_array=(int *)malloc((vt_cnt_uniq+cnt+50)*sizeof(int))))return ERROR_MALLOC;
             vt_array=vt_cnt_uniq_array+vt_cnt_uniq;
             for(ptr=ptr1=vt_ptr[vt_idx[0]];(*dptr++=*ptr1++););
             vt_a1=vt_cnt_1=0;
@@ -2265,7 +2273,7 @@ DLL_EXPORT int generate_lut2(char *inputname,char *outputname,const char *user_i
    if(!outputname)outputname=(char *)default_lutname[0];
    if(stat(inputname,&s_buf)==-1)RETURN(FILE_READ_ERROR);
    bufsize=s_buf.st_size+10+strlen(testbanken_neu);
-   if(!(buffer=malloc(bufsize)) || !(out_buffer=malloc(bufsize)))RETURN(ERROR_MALLOC);
+   if(!(buffer=(char *)malloc(bufsize)) || !(out_buffer=(char *)malloc(bufsize)))RETURN(ERROR_MALLOC);
    if(!(in=fopen(inputname,"rb"))){
       PRINT_VERBOSE_DEBUG_FILE("fopen(rb)");
       if(buffer)FREE(buffer);
@@ -2613,7 +2621,7 @@ DLL_EXPORT int lut_dir_dump_str(char *lutname,char **dptr)
       fclose(lut);
       RETURN(retval);
    }
-   if(!(ptr=malloc(slot_cnt*90+500))){
+   if(!(ptr=(char *)malloc(slot_cnt*90+500))){
       fclose(lut);
       RETURN(ERROR_MALLOC);
    }
@@ -2796,7 +2804,7 @@ DLL_EXPORT int lut_info(char *lut_name,char **info1,char **info2,int *valid1,int
          if(!current_info)
             *info1=NULL;
          else{
-            *info1=ptr=malloc(current_info_len+8192);
+            *info1=ptr=(char *)malloc(current_info_len+8192);
             sprintf(ptr,"%s\nin den Speicher geladene Blocks:\n   ",current_info);
             while(*ptr)ptr++;
             ptr1=*info1+current_info_len+8000;
@@ -2810,7 +2818,7 @@ DLL_EXPORT int lut_info(char *lut_name,char **info1,char **info2,int *valid1,int
             while(*ptr)ptr++;
             *ptr++='\n';
             *ptr++=0;
-            *info1=realloc(*info1,ptr-*info1+10);
+            *info1=(char *)realloc(*info1,ptr-*info1+10);
          }
       }
       if(valid1){
@@ -3011,7 +3019,7 @@ DLL_EXPORT int get_lut_info2(char *lut_name,int *version_p,char **prolog_p,char 
 
    stat(lut_name,&s_buf);
    buflen=s_buf.st_size;
-   if(!(buffer=malloc(buflen)))RETURN(ERROR_MALLOC);
+   if(!(buffer=(char *)malloc(buflen)))RETURN(ERROR_MALLOC);
    if(!(lut=fopen(lut_name,"rb"))){
       PRINT_VERBOSE_DEBUG_FILE("fopen(rb)");
       FREE(buffer);
@@ -3051,7 +3059,7 @@ DLL_EXPORT int get_lut_info2(char *lut_name,int *version_p,char **prolog_p,char 
       FREE(buffer);
    else{
          /* sicherstellen, daﬂ in buffer gen¸gend Platz ist f¸r Prolog und Info/User-Info */
-      if(s_buf.st_size<(ptr-buffer)*2+10)buffer=realloc(buffer,(ptr-buffer)*2+10);
+      if(s_buf.st_size<(ptr-buffer)*2+10)buffer=(char *)realloc(buffer,(ptr-buffer)*2+10);
 
          /* Variablen setzen, dann info und user_info kopieren */
       for(sptr=info,info=ptr;*sptr && *sptr!='\n' && *sptr!='\\';)*ptr++=*sptr++;
@@ -3069,7 +3077,7 @@ DLL_EXPORT int get_lut_info2(char *lut_name,int *version_p,char **prolog_p,char 
           */
       offset1=(info-buffer);
       offset2=(user_info-buffer);
-      buffer=realloc(buffer,(ptr-buffer+10)); /* ¸berfl¸ssigen Speicher wieder freigeben */
+      buffer=(char *)realloc(buffer,(ptr-buffer+10)); /* ¸berfl¸ssigen Speicher wieder freigeben */
 
          /* nun die absoluten Adressen eintragen */
       *prolog_p=buffer;
@@ -3504,7 +3512,7 @@ DLL_EXPORT int kto_check_init(char *lut_name,int *required,int **status,int set,
    }
    if(!incremental){ /* der folgende Teil darf nicht bei incremental gemacht werden, da dieses u.U. current_lutfile benutzt */
       if(current_lutfile)FREE(current_lutfile);
-      if(!(current_lutfile=malloc(strlen(lut_name)+10)))return ERROR_MALLOC;
+      if(!(current_lutfile=(char *)malloc(strlen(lut_name)+10)))return ERROR_MALLOC;
       strcpy(current_lutfile,lut_name);
    }
    current_lut_set=set;
@@ -3534,7 +3542,7 @@ DLL_EXPORT int kto_check_init(char *lut_name,int *required,int **status,int set,
          RETURN(retval);
       }
       FREE(own_buffer);
-      own_buffer=malloc(strlen(prolog)+strlen(info)+strlen(user_info)+10);
+      own_buffer=(char *)malloc(strlen(prolog)+strlen(info)+strlen(user_info)+10);
       for(lut_prolog=optr=own_buffer,ptr=prolog;(*optr++=*ptr++););
       for(ptr=info,lut_sys_info=optr;(*optr++=*ptr++););
       for(ptr=user_info,lut_user_info=optr;(*optr++=*ptr++););
@@ -3725,10 +3733,10 @@ DLL_EXPORT int kto_check_init(char *lut_name,int *required,int **status,int set,
 
             FREE(blz);
             FREE(hash);
-            if(!(blz=calloc(lut2_cnt_hs+1,sizeof(int)))
-                  || (!startidx && !(startidx=calloc(lut2_cnt_hs,sizeof(int))))  /* Index der Hauptstelle in den groﬂen Arrays */
-                  || (!hs_idx && !(hs_idx=calloc(lut2_cnt,sizeof(int))))   /* reziprok zu startidx */
-                  || !(hash=calloc(sizeof(short),HASH_BUFFER_SIZE)))
+            if(!(blz=(int *)calloc(lut2_cnt_hs+1,sizeof(int)))
+                  || (!startidx && !(startidx=(int *)calloc(lut2_cnt_hs,sizeof(int))))  /* Index der Hauptstelle in den groﬂen Arrays */
+                  || (!hs_idx && !(hs_idx=(int *)calloc(lut2_cnt,sizeof(int))))   /* reziprok zu startidx */
+                  || !(hash=(short int *)calloc(sizeof(short),HASH_BUFFER_SIZE)))
                lut2_block_status[typ]=lut2_block_status[typ1]=ERROR_MALLOC;
             else{
                for(i=0,eptr=data+len;ptr<eptr && i<lut2_cnt_hs;i++){
@@ -3770,13 +3778,16 @@ DLL_EXPORT int kto_check_init(char *lut_name,int *required,int **status,int set,
          case LUT2_2_FILIALEN:
             release_data=1;
             FREE(filialen);
-            if(!(filialen=calloc(len,sizeof(int))))
+            if(!(filialen=(int *)calloc(len,sizeof(int))) || (!startidx_r && !(startidx_r=(int *)calloc(lut2_cnt,sizeof(int)))))
                lut2_block_status[typ]=lut2_block_status[typ1]=ERROR_MALLOC;
             else{
                for(i=j=x=0,ptr=data,eptr=data+len;i<(int)len;i++){
                   startidx[i]+=j;   /* j ist nur ein Inkrement, startidx[] wurde oben mit i initialisiert */
                   filialen[i]=UI *ptr++;
-                  for(y=0;y<filialen[i];y++)hs_idx[x++]=startidx[i]; /* Hauptstellen-Index f¸r alle Filialen der Bank setzen */
+                  for(y=0;y<filialen[i];y++){
+                     hs_idx[x]=startidx[i]; /* Hauptstellen-Index f¸r alle Filialen der Bank setzen */
+                     startidx_r[x++]=i;     /* R¸ckverweis aus den groﬂen Arrays ins BLZ- und Pr¸fziffer-Array */
+                  }
                   j+=filialen[i]-1;
                }
             }
@@ -3817,7 +3828,7 @@ DLL_EXPORT int kto_check_init(char *lut_name,int *required,int **status,int set,
             FREE(own_iban);
             ptr=data;
             C2UL(own_iban_cnt,ptr);
-            if(!(own_iban=calloc(own_iban_cnt,sizeof(int))))
+            if(!(own_iban=(int *)calloc(own_iban_cnt,sizeof(int))))
                lut2_block_status[typ]=lut2_block_status[typ1]=ERROR_MALLOC;
             else
                for(i=0;i<own_iban_cnt;i++)C2UL(own_iban[i],ptr);
@@ -3827,7 +3838,7 @@ DLL_EXPORT int kto_check_init(char *lut_name,int *required,int **status,int set,
          case LUT2_2_NAME:
             release_data=0;
             FREE(name);
-            if(!(name=calloc(lut2_cnt,sizeof(char*))))
+            if(!(name=(char **)calloc(lut2_cnt,sizeof(char*))))
                lut2_block_status[typ]=lut2_block_status[typ1]=ERROR_MALLOC;
             else{
                FREE(name_data);
@@ -3855,7 +3866,7 @@ DLL_EXPORT int kto_check_init(char *lut_name,int *required,int **status,int set,
          case LUT2_2_NAME_KURZ:
             release_data=0;
             FREE(name_kurz);
-            if(!(name_kurz=calloc(lut2_cnt,sizeof(char*))))
+            if(!(name_kurz=(char **)calloc(lut2_cnt,sizeof(char*))))
                lut2_block_status[typ]=lut2_block_status[typ1]=ERROR_MALLOC;
             else{
                FREE(name_kurz_data);
@@ -3880,7 +3891,7 @@ DLL_EXPORT int kto_check_init(char *lut_name,int *required,int **status,int set,
             release_data=0;
             FREE(name);
             FREE(name_kurz);
-            if(!(name=calloc(lut2_cnt,sizeof(char*))) || !(name_kurz=calloc(lut2_cnt,sizeof(char*))))
+            if(!(name=(char **)calloc(lut2_cnt,sizeof(char*))) || !(name_kurz=(char **)calloc(lut2_cnt,sizeof(char*))))
                lut2_block_status[typ]=lut2_block_status[typ1]=ERROR_MALLOC;
             else{
                if(name_name_kurz_data==name_name_kurz_raw)name_name_kurz_raw=NULL;
@@ -3914,7 +3925,7 @@ DLL_EXPORT int kto_check_init(char *lut_name,int *required,int **status,int set,
          case LUT2_2_PLZ:
             release_data=1;
             FREE(plz);
-            if(!(plz=calloc(len/3,sizeof(int)))){
+            if(!(plz=(int *)calloc(len/3,sizeof(int)))){
                lut2_block_status[typ]=lut2_block_status[typ1]=ERROR_MALLOC;
             }
             else{
@@ -3929,7 +3940,7 @@ DLL_EXPORT int kto_check_init(char *lut_name,int *required,int **status,int set,
          case LUT2_2_ORT:
             release_data=0;
             FREE(ort);
-            if(!(ort=calloc(lut2_cnt,sizeof(char*))))
+            if(!(ort=(char **)calloc(lut2_cnt,sizeof(char*))))
                lut2_block_status[typ]=lut2_block_status[typ1]=ERROR_MALLOC;
             else{
                FREE(ort_data);
@@ -3953,7 +3964,7 @@ DLL_EXPORT int kto_check_init(char *lut_name,int *required,int **status,int set,
          case LUT2_2_IBAN_REGEL:
             release_data=1;
             FREE(iban_regel);
-            if(!(iban_regel=calloc(lut2_cnt,sizeof(int)))){
+            if(!(iban_regel=(int *)calloc(lut2_cnt,sizeof(int)))){
                lut2_block_status[typ]=lut2_block_status[typ1]=ERROR_MALLOC;
             }
             else{
@@ -3968,7 +3979,7 @@ DLL_EXPORT int kto_check_init(char *lut_name,int *required,int **status,int set,
          case LUT2_2_PAN:
             release_data=1;
             FREE(pan);
-            if(!(pan=calloc(lut2_cnt,sizeof(int)))){
+            if(!(pan=(int *)calloc(lut2_cnt,sizeof(int)))){
                lut2_block_status[typ]=lut2_block_status[typ1]=ERROR_MALLOC;
             }
             else{
@@ -3985,8 +3996,8 @@ DLL_EXPORT int kto_check_init(char *lut_name,int *required,int **status,int set,
             FREE(bic);
             FREE(bic_h);
             FREE(bic_buffer);
-            if(!(bic_buffer=calloc(lut2_cnt+10,12)) || !(bic=calloc(lut2_cnt+10,sizeof(char*)))
-                  || !(bic_h=calloc(lut2_cnt+10,sizeof(char*)))){
+            if(!(bic_buffer=(char *)calloc(lut2_cnt+10,12)) || !(bic=(char **)calloc(lut2_cnt+10,sizeof(char*)))
+                  || !(bic_h=(char **)calloc(lut2_cnt+10,sizeof(char**)))){
                lut2_block_status[typ]=lut2_block_status[typ1]=ERROR_MALLOC;
             }
             else{
@@ -4014,7 +4025,7 @@ DLL_EXPORT int kto_check_init(char *lut_name,int *required,int **status,int set,
                   }
                   *dptr++=0;
                }
-               bic_buffer=realloc(bic_buffer,(size_t)(dptr-bic_buffer)+10);
+               bic_buffer=(char *)realloc(bic_buffer,(size_t)(dptr-bic_buffer)+10);
 
                   /* die Schleife darf erst ab 1 laufen, da der Offset f¸r die
                    * Bundesbank (in bic[0]) 0 ist. bic[0] und bic_h[0] muﬂ
@@ -4035,7 +4046,7 @@ DLL_EXPORT int kto_check_init(char *lut_name,int *required,int **status,int set,
          case LUT2_2_PZ:
             release_data=1;
             FREE(pz_methoden);
-            if(!(pz_methoden=calloc(len,sizeof(int))))
+            if(!(pz_methoden=(int *)calloc(len,sizeof(int))))
                lut2_block_status[typ]=lut2_block_status[typ1]=ERROR_MALLOC;
             else{
                for(i=0,ptr=data,eptr=data+len;ptr<eptr;i++)pz_methoden[i]=UI *ptr++;
@@ -4047,7 +4058,7 @@ DLL_EXPORT int kto_check_init(char *lut_name,int *required,int **status,int set,
          case LUT2_2_NR:
             release_data=1;
             FREE(bank_nr);
-            if(!(bank_nr=calloc(len,sizeof(int))))
+            if(!(bank_nr=(int *)calloc(len,sizeof(int))))
                lut2_block_status[typ]=lut2_block_status[typ1]=ERROR_MALLOC;
             else{
                for(i=0,ptr=data,eptr=data+len;ptr<eptr;i++){
@@ -4061,7 +4072,7 @@ DLL_EXPORT int kto_check_init(char *lut_name,int *required,int **status,int set,
          case LUT2_2_AENDERUNG:
             release_data=1;
             FREE(aenderung);
-            if(!(aenderung=calloc(len,1)))
+            if(!(aenderung=(char *)calloc(len,1)))
                lut2_block_status[typ]=lut2_block_status[typ1]=ERROR_MALLOC;
             else
                for(ptr=data,dptr=aenderung,eptr=data+len;ptr<eptr;)*dptr++=*ptr++;
@@ -4071,7 +4082,7 @@ DLL_EXPORT int kto_check_init(char *lut_name,int *required,int **status,int set,
          case LUT2_2_LOESCHUNG:
             release_data=1;
             FREE(loeschung);
-            if(!(loeschung=calloc(len,1)))
+            if(!(loeschung=(char *)calloc(len,1)))
                lut2_block_status[typ]=lut2_block_status[typ1]=ERROR_MALLOC;
             else
                for(ptr=data,dptr=loeschung,eptr=data+len;ptr<eptr;)*dptr++=*ptr++;
@@ -4081,7 +4092,7 @@ DLL_EXPORT int kto_check_init(char *lut_name,int *required,int **status,int set,
          case LUT2_2_NACHFOLGE_BLZ:
             release_data=1;
             FREE(nachfolge_blz);
-            if(!(nachfolge_blz=calloc(len/4,sizeof(int))))
+            if(!(nachfolge_blz=(int *)calloc(len/4,sizeof(int))))
                lut2_block_status[typ]=lut2_block_status[typ1]=ERROR_MALLOC;
             else{
                for(i=0,ptr=data,eptr=data+len;ptr<eptr;i++){
@@ -4172,11 +4183,11 @@ DLL_EXPORT int lut_blocks(int mode,char **lut_filename,char **lut_blocks_ok,char
 
    if(lut_filename){
       if(!current_lutfile)return LUT2_NOT_INITIALIZED;
-      if(!(*lut_filename=dptr=malloc(strlen(current_lutfile)+4)))return ERROR_MALLOC;
+      if(!(*lut_filename=dptr=(char *)malloc(strlen(current_lutfile)+4)))return ERROR_MALLOC;
       strcpy(dptr,current_lutfile);
    }
    if(lut_blocks_fehler){
-      if(!(*lut_blocks_fehler=dptr=malloc(lut_blocklen_max+4)))return ERROR_MALLOC;
+      if(!(*lut_blocks_fehler=dptr=(char *)malloc(lut_blocklen_max+4)))return ERROR_MALLOC;
       if(!lut_blocks_missing)
          *dptr=0;
       else{
@@ -4189,7 +4200,7 @@ DLL_EXPORT int lut_blocks(int mode,char **lut_filename,char **lut_blocks_ok,char
       }
    }
    if(lut_blocks_ok){
-      if(!(*lut_blocks_ok=dptr=malloc(lut_blocklen_max+4)))return ERROR_MALLOC;
+      if(!(*lut_blocks_ok=dptr=(char *)malloc(lut_blocklen_max+4)))return ERROR_MALLOC;
       for(i=0;i<SET_OFFSET;i++)if(lut2_block_status[i+set_offset]==OK){
          for(ptr=startptr[i+set_offset];(*dptr=*ptr++);dptr++);
          *dptr++=',';
@@ -5067,7 +5078,7 @@ static int iban_regel_cvt(char *blz,char *kto,const char **bicp,int regel_versio
       /* Lˆschkennzeichen der BLZ ¸berpr¸fen, u.U. Nachfolge-BLZ einsetzen */
    if(lut_aenderung_i(b,0,NULL)=='D' && !(b=lut_nachfolge_blz_i(b,0,NULL)))return BLZ_MARKED_AS_DELETED;
 
-#define RETURN_OK do{if(b!=b_alt)return OK_BLZ_KTO_REPLACED; else return OK;}while(0) /* Lˆschkennzeichen und Nachfolge-BLZ beachten f¸r retval */
+#define RETURN_OK do{if(b!=b_alt)return OK_BLZ_REPLACED; else return OK;}while(0) /* Lˆschkennzeichen und Nachfolge-BLZ beachten f¸r retval */
 #define RETURN_OK_KTO_REPLACED do{if(b!=b_alt)return OK_BLZ_KTO_REPLACED; else return OK_KTO_REPLACED;}while(0) /* Lˆschkennzeichen und Nachfolge-BLZ beachten f¸r retval */
 
       /* Im Folgenden werden die IBAN-Regeln auf die ¸bergebene BLZ und
@@ -8992,6 +9003,7 @@ DLL_EXPORT int lut_cleanup(void)
    FREE(loeschung);
    FREE(blz);
    FREE(startidx);
+   FREE(startidx_r);
    FREE(hs_idx);
    FREE(plz);
    FREE(filialen);
@@ -9086,7 +9098,7 @@ static int read_lut(char *filename,int *cnt_blz)
    if(cnt_blz)*cnt_blz=0;
    if(!(init_status&1))init_atoi_table();
    if(stat(filename,&s_buf)==-1)RETURN(NO_LUT_FILE);
-   if(!(inbuffer=calloc(s_buf.st_size+128,1)))RETURN(ERROR_MALLOC);
+   if(!(inbuffer=(unsigned char *)calloc(s_buf.st_size+128,1)))RETURN(ERROR_MALLOC);
    if((in=open(filename,O_RDONLY|O_BINARY))<0)RETURN(NO_LUT_FILE);
    if(!(cnt=read(in,inbuffer,s_buf.st_size)))RETURN(FILE_READ_ERROR);
    close(in);
@@ -9111,11 +9123,12 @@ static int read_lut(char *filename,int *cnt_blz)
       /* zun‰chst u.U. Speicher freigeben, damit keine Lecks entstehen */
    FREE(blz);
    FREE(startidx);
+   FREE(startidx_r);
    FREE(hs_idx);
    FREE(hash);
    FREE(pz_methoden);
-   if(!(blz=calloc(j=cnt+100,sizeof(int))) || !(startidx=calloc(j,sizeof(int)))
-         || !(hash=calloc(HASH_BUFFER_SIZE,sizeof(short))) || !(pz_methoden=calloc(j,sizeof(int)))){
+   if(!(blz=(int *)calloc(j=cnt+100,sizeof(int))) || !(startidx=(int *)calloc(j,sizeof(int)))
+         || !(hash=(short int *)calloc(HASH_BUFFER_SIZE,sizeof(short))) || !(pz_methoden=(int *)calloc(j,sizeof(int)))){
       lut_cleanup();
       RETURN(ERROR_MALLOC);
    }
@@ -9198,8 +9211,8 @@ static void init_atoi_table(void)
    unsigned long l;
 
 #if 1
-      /* ƒnderungen zum 3.3.2014 aktivieren */
-   if(time(NULL)>1393801200)pz_aenderungen_aktivieren=1;
+      /* ƒnderungen zum 9.6.2014 aktivieren */
+   if(time(NULL)>1402264800)pz_aenderungen_aktivieren=1;
 #endif
 
    /* ung¸ltige Ziffern; Blanks und Tabs werden ebenfalls als ung¸ltig
@@ -13064,7 +13077,7 @@ static int kto_check_int(char *x_blz,int pz_methode,char *kto)
             retvals->pz_methode=2066;
          }
 #endif
-         if(pz_aenderungen_aktivieren && kto[1]=='9')return OK_NO_CHK;
+         if(kto[1]=='9')return OK_NO_CHK;
 #if DEBUG>0
       case 1066:
          if(retvals){
@@ -15390,36 +15403,125 @@ static int kto_check_int(char *x_blz,int pz_methode,char *kto)
    Berechnung nach der Methode 90 +ßßß4 */
 /*
  * ######################################################################
- * #      Berechnung nach der Methode 90 (ge‰ndert zum 6.6.2005)        #
+ * #      Berechnung nach der Methode 90 (ge‰ndert zum 9.6.2014)        #
  * ######################################################################
- * # 1. Kundenkonten                                                    #
- * # A. Modulus 11, Gewichtung 2, 3, 4, 5, 6, 7. -> Methode 32          #
- * # B. Modulus 11, Gewichtung 2, 3, 4, 5, 6.    -> Methode 33          #
- * # C. Modulus  7, Gewichtung 2, 3, 4, 5, 6.    -> Methode 33 mod7     #
- * # D. Modulus  9, Gewichtung 2, 3, 4, 5, 6.    -> Methode 33 mod9     #
- * # E. Modulus 10, Gewichtung 2, 1, 2, 1, 2.    -> Methode 33 mod10    #
+ * # Die Kontonummer ist immer 10-stellig, ggf. ist die Kontonummer     #
+ * # durch linksb¸ndige Auff¸llung mit Nullen 10-stellig                #
+ * # darzustellen. Die Stelle 10 der Kontonummer ist per Definition     #
+ * # die Pr¸fziffer. Kontonummern, die nach Durchf¸hrung der unten      #
+ * # n‰her aufgef¸hrten Berechnungsmethoden nicht zu einem richtigen    #
+ * # Ergebnis f¸hren, sind nicht g¸ltig.                                #
  * #                                                                    #
- * # Die Kontonummer ist immer 10-stellig. Die f¸r die Berechnung       #
- * # relevante Kundennummer befindet sich bei der Methode A in den      #
- * # Stellen 4 bis 9 der Kontonummer und bei den Methoden B - E in      #
- * # den Stellen 5 bis 9, die Pr¸fziffer in Stelle 10.                  #
+ * # Die f¸r die Berechnung relevante Kundennummer (K) befindet sich    #
+ * # bei der Methode A in den Stellen 4 bis 9 der Kontonummer und bei   #
+ * # den Methoden B bis E und G in den Stellen 5 bis 9.                 #
  * #                                                                    #
- * # Ergibt die erste Berechnung der Pr¸fziffer nach dem Verfahren A    #
- * # einen Pr¸fziffernfehler, so sind weitere Berechnungen mit den      #
- * # anderen Methoden vorzunehmen.                                      #
- * # Die Methode A enstpricht Verfahren 32. Die Methoden B - E          #
- * # entsprechen Verfahren 33, jedoch mit Divisoren 11, 7, 9 und 10.    #
+ * # Ausnahme:                                                          #
+ * # Ist nach linksb¸ndigem Auff¸llen mit Nullen auf 10 Stellen die     #
+ * # 3. Stelle der Kontonummer = 9 (Sachkonten) befindet sich die f¸r   #
+ * # die Berechnung relevante Sachkontonummer (S) in den Stellen 3      #
+ * # bis 9. Diese Kontonummern sind ausschlieﬂlich nach Methode F zu    #
+ * # pr¸fen.                                                            #
  * #                                                                    #
- * # Ausnahme: Ist nach linksb¸ndigem Auff¸llen mit Nullen auf 10       #
- * # Stellen die 3. Stelle der Kontonummer = 9 (Sachkonten) befindet    #
- * # sich die f¸r die Berechnung relevante Sachkontonummer (S) in       #
- * # den Stellen 3 bis 9. Diese Kontonummern sind ausschlieﬂlich        #
- * # nach Methode F zu pr¸fen.                                          #
+ * # Kundenkonten                                                       #
+ * # Kundenkonten haben im Gegensatz zu Sachkonten an der Stelle 3      #
+ * # nicht die Ziffer 9 stehen.                                         #
  * #                                                                    #
- * # 2. Sachkonten -> Methode 32 (modifiziert)                          #
- * # F. Modulus 11, Gewichtung 2, 3, 4, 5, 6, 7, 8.                     #
- * # Die 3. Stelle ist 9, die f¸r die Berechnung relevanten  Stellen    #
- * # befinden sich in den Stellen 3 bis 9.                              #
+ * # Ergibt die Berechnung der Pr¸fziffer nach dem Verfahren A einen    #
+ * # Pr¸fzifferfehler, so sind weitere Berechnungen mit den Methoden    #
+ * # B bis E und G vorzunehmen. kundenkontonummern, die nach            #
+ * # Durchf¸hrung aller Berechnungsmethoden A bis E und G nicht zu      #
+ * # einem richtigen Ergebnis f¸hren, ist nicht g¸ltig.                 #
+ * #                                                                    #
+ * # Methode A:                                                         #
+ * # Modulus 11, Gewichtung 2, 3, 4, 5, 6, 7                            #
+ * # Stellennr.: 1 2 3 4 5 6 7 8 9 A (A = 10)                           #
+ * # Kontonr.: x x x K K K K K K P                                      #
+ * # Gewichtung: 7 6 5 4 3 2                                            #
+ * #                                                                    #
+ * # Die Berechnung und mˆgliche Ergebnisse entsprechen dem Verfahren   #
+ * # 06.                                                                #
+ * #                                                                    #
+ * # Methode B                                                          #
+ * # Modulus 11, Gewichtung 2, 3, 4, 5, 6                               #
+ * # Stellennr.: 1 2 3 4 5 6 7 8 9 A (A = 10)                           #
+ * # Kontonr.: x x x x K K K K K P                                      #
+ * # Gewichtung: 6 5 4 3 2                                              #
+ * #                                                                    #
+ * # Die Berechnung und die mˆglichen Ergebnisse entsprechen dem        #
+ * # Verfahren 06.                                                      #
+ * #                                                                    #
+ * # Methode C                                                          #
+ * # Modulus 7, Gewichtung 2, 3, 4, 5, 6                                #
+ * # Stellennr.: 1 2 3 4 5 6 7 8 9 A (A = 10)                           #
+ * # Kontonr.: x x x x K K K K K P                                      #
+ * # Gewichtung: 6 5 4 3 2                                              #
+ * #                                                                    #
+ * # Die einzelnen Stellen der Kontonummer sind von rechts nach links   #
+ * # mit den Gewichten zu multiplizieren. Die jeweiligen Produkte       #
+ * # werden addiert. Die Summe der Produkte ist durch 7 zu              #
+ * # dividieren. Der verbleibende Rest wird vom Divisor (7)             #
+ * # subtrahiert. Das Ergebnis ist die Pr¸fziffer. Verbleibt kein       #
+ * # Rest, ist die Pr¸fziffer 0.                                        #
+ * #                                                                    #
+ * # Kontonummern, die in der Stelle 10 die Werte 7, 8 oder 9 haben,    #
+ * # sind nach dieser Methode nicht g¸ltig.                             #
+ * #                                                                    #
+ * # Methode D                                                          #
+ * # Modulus 9, Gewichtung 2, 3, 4, 5, 6                                #
+ * # Stellennr.: 1 2 3 4 5 6 7 8 9 A (A = 10)                           #
+ * # Kontonr.:   x x x x K K K K K P                                    #
+ * # Gewichtung:         6 5 4 3 2                                      #
+ * #                                                                    #
+ * # Die einzelnen Stellen der Kontonummer sind von rechts nach links   #
+ * # mit den Gewichten zu multiplizieren. Die jeweiligen Produkte       #
+ * # werden addiert. Die Summe der Produkte ist durch 9 zu              #
+ * # dividieren. Der verbleibende Rest wird vom Divisor (9)             #
+ * # subtrahiert. Das Ergebnis ist die Pr¸fziffer. Verbleibt kein       #
+ * # Rest, ist die Pr¸fziffer 0.                                        #
+ * #                                                                    #
+ * # Kontonummern, die an der Stelle 10 den Wert 9 haben sind nach      #
+ * # dieser Methode nicht g¸ltig.                                       #
+ * #                                                                    #
+ * # Methode E                                                          #
+ * # Modulus 10, Gewichtung 2, 1, 2, 1, 2                               #
+ * # Stellennr.: 1 2 3 4 5 6 7 8 9 A (A = 10)                           #
+ * # Kontonr.:   x x x x K K K K K P                                    #
+ * # Gewichtung:         2 1 2 1 2                                      #
+ * #                                                                    #
+ * # Die einzelnen Stellen der Kontonummer sind von rechts nach links   #
+ * # mit den Gewichten zu multiplizieren. Die jeweiligen Produkte       #
+ * # werden addiert. Die Summe der Produkte ist durch 10 zu             #
+ * # dividieren. Der verbleibende Rest wird vom Divisor (10)            #
+ * # subtrahiert. Das Ergebnis ist die Pr¸fziffer. Verbleibt kein       #
+ * # Rest, ist die Pr¸fziffer 0.                                        #
+ * #                                                                    #
+ * # Methode G                                                          #
+ * # Modulus 7, Gewichtung 2, 1, 2, 1, 2, 1                             #
+ * # Stellennr.: 1 2 3 4 5 6 7 8 9 A (A = 10)                           #
+ * # Kontonr.:   x x x K K K K K K P                                    #
+ * # Gewichtung:       1 2 1 2 1 2                                      #
+ * #                                                                    #
+ * # Die einzelnen Stellen der Kontonummer sind von rechts nach links   #
+ * # mit den Gewichten zu multiplizieren. Die jeweiligen Produkte       #
+ * # werden addiert. Die Summe der Produkte ist durch 7 zu              #
+ * # dividieren. Der verbleibende Rest wird vom Divisor (7)             #
+ * # subtrahiert. Das Ergebnis ist die Pr¸fziffer. Verbleibt kein       #
+ * # Rest, ist die Pr¸fziffer 0.                                        #
+ * #                                                                    #
+ * # Sachkonten                                                         #
+ * # Sachkonten haben im Gegensatz zu Kundenkonten an der Stelle 3      #
+ * # die Ziffer 9 stehen.                                               #
+ * #                                                                    #
+ * # Methode F                                                          #
+ * # Modulus 11, Gewichtung 2, 3, 4, 5, 6, 7, 8                         #
+ * # Stellennr.: 1 2 3 4 5 6 7 8 9 A (A = 10)                           #
+ * # Kontonr.:   x x S S S S S S S P                                    #
+ * # Gewichtung:     8 7 6 5 4 3 2                                      #
+ * #                                                                    #
+ * # Die Berechnung und die mˆglichen Ergebnisse entsprechen dem        #
+ * # Verfahren 06. Es ist jedoch die vorgenannte Gewichtung zu          #
+ * # beachten.                                                          #
  * ######################################################################
  */
 
@@ -15545,7 +15647,40 @@ static int kto_check_int(char *x_blz,int pz_methode,char *kto)
 
          MOD_10_40;   /* pz%=10 */
          if(pz)pz=10-pz;
-         CHECK_PZ10;
+         CHECK_PZX10;
+
+            /* Methode G */
+#if DEBUG>0
+      case 7090:
+         if(retvals){
+            retvals->methode="90g";
+            retvals->pz_methode=7090;
+         }
+#endif
+         if(pz_aenderungen_aktivieren){
+            pz = (kto[3]-'0')
+               + (kto[4]-'0') * 2
+               + (kto[5]-'0')
+               + (kto[6]-'0') * 2
+               + (kto[7]-'0')
+               + (kto[8]-'0') * 2;
+
+            MOD_7_56;    /* pz%=7 */
+            if(pz)pz=7-pz;
+            CHECK_PZ10;
+         }
+         else{
+#if DEBUG>0
+            if(!pz_aenderungen_aktivieren){  /* switch-code derzeit noch nicht g¸ltig */
+               if(untermethode==7)return UNDEFINED_SUBMETHOD;
+               if(retvals){ /* Methode zur¸cksetzen, nicht definiert */
+                  retvals->methode="90e";
+                  retvals->pz_methode=5090;
+               }
+            }
+#endif
+            return FALSE;
+         }
 
 /*  Berechnung nach der Methode 91 +ßßß4 */
 /*
@@ -20735,969 +20870,6 @@ DLL_EXPORT int bic_check(char *search_bic,int *cnt)
    return retval;
 }
 
-/* Funktion kto_check_retval2txt() +ßßß1 */
-/* ###########################################################################
- * # Die Funktion kto_check_retval2txt() wandelt die numerischen R¸ckgabe-   #
- * # werte in Klartext um. Die Funktion kto_check_retval2txt_short macht     #
- * # dasselbe, nur mit mehr symbolischen Klartexten (kurz).                  #
- * #                                                                         #
- * # Copyright (C) 2007 Michael Plugge <m.plugge@hs-mannheim.de>             #
- * ###########################################################################
- */
-
-DLL_EXPORT const char *kto_check_retval2txt(int retval)
-{
-   if(!retval_enc)kto_check_encoding(DEFAULT_ENCODING);
-   return (*retval_enc)(retval);
-}
-
-DLL_EXPORT const char *kto_check_retval2iso(int retval)
-{
-   switch(retval){
-      case IBAN_ONLY_GERMAN: return "Es werden nur deutsche IBANs unterst¸tzt";
-      case INVALID_PARAMETER_TYPE: return "Falscher Parametertyp f¸r die Funktion";
-      case BIC_ONLY_GERMAN: return "Es werden nur deutsche BICs unterst¸tzt";
-      case INVALID_BIC_LENGTH: return "Die L‰nge des BIC muﬂ genau 8 oder 11 Zeichen sein";
-      case IBAN_CHKSUM_OK_RULE_IGNORED_BLZ: return "Die IBAN-Pr¸fsumme stimmt, die BLZ sollte aber durch eine zentrale BLZ ersetzt werden. Die Richtigkeit der IBAN kann nur mit einer Anfrage bei der Bank ermittelt werden";
-      case IBAN_CHKSUM_OK_KC_NOT_INITIALIZED: return "Die IBAN-Pr¸fsumme stimmt, konto_check wurde jedoch noch nicht initialisiert (Kontopr¸fung nicht mˆglich)";
-      case IBAN_CHKSUM_OK_BLZ_INVALID: return "Die IBAN-Pr¸fsumme stimmt, die BLZ ist allerdings ung¸ltig";
-      case IBAN_CHKSUM_OK_NACHFOLGE_BLZ_DEFINED: return "Die IBAN-Pr¸fsumme stimmt, f¸r die Bank gibt es allerdings eine (andere) Nachfolge-BLZ";
-      case LUT2_NOT_ALL_IBAN_BLOCKS_LOADED: return "es konnten nicht alle Datenblocks die f¸r die IBAN-Berechnung notwendig sind geladen werden";
-      case LUT2_NOT_YET_VALID_PARTIAL_OK: return "Der Datensatz ist noch nicht g¸ltig, auﬂerdem konnten nicht alle Blocks geladen werden";
-      case LUT2_NO_LONGER_VALID_PARTIAL_OK: return "Der Datensatz ist nicht mehr g¸ltig, auﬂerdem konnten nicht alle Blocks geladen werdeng";
-      case LUT2_BLOCKS_MISSING: return "ok, bei der Initialisierung konnten allerdings ein oder mehrere Blocks nicht geladen werden";
-      case FALSE_UNTERKONTO_ATTACHED: return "falsch, es wurde ein Unterkonto hinzugef¸gt (IBAN-Regel)";
-      case BLZ_BLACKLISTED: return "Die BLZ findet sich in der Ausschlussliste f¸r IBAN-Berechnungen";
-      case BLZ_MARKED_AS_DELETED: return "Die BLZ ist in der Bundesbank-Datei als gelˆscht markiert und somit ung¸ltig";
-      case IBAN_CHKSUM_OK_SOMETHING_WRONG: return "Die IBAN-Pr¸fsumme stimmt, es gibt allerdings einen Fehler in der eigenen IBAN-Bestimmung (wahrscheinlich falsch)";
-      case IBAN_CHKSUM_OK_NO_IBAN_CALCULATION: return "Die IBAN-Pr¸fsumme stimmt. Die Bank gibt IBANs nach nicht verˆffentlichten Regeln heraus, die Richtigkeit der IBAN kann nur mit einer Anfrage bei der Bank ermittelt werden";
-      case IBAN_CHKSUM_OK_RULE_IGNORED: return "Die IBAN-Pr¸fsumme stimmt, es wurde allerdings eine IBAN-Regel nicht beachtet (wahrscheinlich falsch)";
-      case IBAN_CHKSUM_OK_UNTERKTO_MISSING: return "Die IBAN-Pr¸fsumme stimmt, es fehlt aber ein Unterkonto (wahrscheinlich falsch)";
-      case IBAN_INVALID_RULE: return "Die BLZ passt nicht zur angegebenen IBAN-Regel";
-      case IBAN_AMBIGUOUS_KTO: return "Die Kontonummer ist nicht eindeutig (es gibt mehrere Mˆglichkeiten)";
-      case IBAN_RULE_NOT_IMPLEMENTED: return "Die IBAN-Regel ist noch nicht implementiert";
-      case IBAN_RULE_UNKNOWN: return "Die IBAN-Regel ist nicht bekannt";
-      case NO_IBAN_CALCULATION: return "F¸r die Bankverbindung ist keine IBAN-Berechnung erlaubt";
-      case OLD_BLZ_OK_NEW_NOT: return "Die Bankverbindung ist mit der alten BLZ stimmig, mit der Nachfolge-BLZ nicht";
-      case LUT2_IBAN_REGEL_NOT_INITIALIZED: return "Das Feld IBAN-Regel wurde nicht initialisiert";
-      case INVALID_IBAN_LENGTH: return "Die L‰nge der IBAN f¸r das angegebene L‰nderk¸rzel ist falsch";
-      case LUT2_NO_ACCOUNT_GIVEN: return "Keine Bankverbindung/IBAN angegeben";
-      case LUT2_VOLLTEXT_INVALID_CHAR: return "Ung¸ltiges Zeichen ( ()+-/&.,\' ) f¸r die Volltextsuche gefunden";
-      case LUT2_VOLLTEXT_SINGLE_WORD_ONLY: return "Die Volltextsuche sucht jeweils nur ein einzelnes Wort, benutzen Sie lut_suche_multiple() zur Suche nach mehreren Worten";
-      case LUT_SUCHE_INVALID_RSC: return "die angegebene Suchresource ist ung¸ltig";
-      case LUT_SUCHE_INVALID_CMD: return "bei der Suche sind im Verkn¸pfungsstring nur die Zeichen a-z sowie + und - erlaubt";
-      case LUT_SUCHE_INVALID_CNT: return "bei der Suche m¸ssen zwischen 1 und 26 Suchmuster angegeben werden";
-      case LUT2_VOLLTEXT_NOT_INITIALIZED: return "Das Feld Volltext wurde nicht initialisiert";
-      case NO_OWN_IBAN_CALCULATION: return "das Institut erlaubt keine eigene IBAN-Berechnung";
-      case KTO_CHECK_UNSUPPORTED_COMPRESSION: return "die notwendige Kompressions-Bibliothek wurde beim Kompilieren nicht eingebunden";
-      case KTO_CHECK_INVALID_COMPRESSION_LIB: return "der angegebene Wert f¸r die Default-Kompression ist ung¸ltig";
-      case OK_UNTERKONTO_ATTACHED_OLD: return "(nicht mehr als Fehler, sondern positive Ausgabe - Dummy f¸r den alten Wert)";
-      case KTO_CHECK_DEFAULT_BLOCK_INVALID: return "Ung¸ltige Signatur im Default-Block";
-      case KTO_CHECK_DEFAULT_BLOCK_FULL: return "Die maximale Anzahl Eintr‰ge f¸r den Default-Block wurde erreicht";
-      case KTO_CHECK_NO_DEFAULT_BLOCK: return "Es wurde noch kein Default-Block angelegt";
-      case KTO_CHECK_KEY_NOT_FOUND: return "Der angegebene Schl¸ssel wurde im Default-Block nicht gefunden";
-      case LUT2_NO_LONGER_VALID_BETTER: return "Beide Datens‰tze sind nicht mehr g¸ltig, dieser ist aber j¸nger als der andere";
-      case DTA_SRC_KTO_DIFFERENT: return "Die Auftraggeber-Kontonummer des C-Datensatzes unterscheidet sich von der des A-Satzes";
-      case DTA_SRC_BLZ_DIFFERENT: return "Die Auftraggeber-Bankleitzahl des C-Datensatzes unterscheidet sich von der des A-Satzes";
-      case DTA_CR_LF_IN_FILE: return "Die DTA-Datei enth‰lt (unzul‰ssige) Zeilenvorsch¸be";
-      case DTA_INVALID_C_EXTENSION: return "ung¸ltiger Typ bei einem Erweiterungsblock eines C-Datensatzes";
-      case DTA_FOUND_SET_A_NOT_C: return "Es wurde ein C-Datensatz erwartet, jedoch ein E-Satz gefunden";
-      case DTA_FOUND_SET_E_NOT_C: return "Es wurde ein C-Datensatz erwartet, jedoch ein E-Satz gefunden";
-      case DTA_FOUND_SET_C_NOT_EXTENSION: return "Es wurde ein C-Datensatzerweiterung erwartet, jedoch ein C-Satz gefunden";
-      case DTA_FOUND_SET_E_NOT_EXTENSION: return "Es wurde ein C-Datensatzerweiterung erwartet, jedoch ein E-Satz gefunden";
-      case DTA_INVALID_EXTENSION_COUNT: return "Die Anzahl Erweiterungen paﬂt nicht zur Blockl‰nge";
-      case DTA_INVALID_NUM: return "Ung¸ltige Zeichen in numerischem Feld";
-      case DTA_INVALID_CHARS: return "Ung¸ltige Zeichen im Textfeld";
-      case DTA_CURRENCY_NOT_EURO: return "Die W‰hrung des DTA-Datensatzes ist nicht Euro";
-      case DTA_EMPTY_AMOUNT: return "In einem DTA-Datensatz wurde kein Betrag angegeben";
-      case DTA_INVALID_TEXT_KEY: return "Ung¸ltiger Textschl¸ssel in der DTA-Datei";
-      case DTA_EMPTY_STRING: return "F¸r ein (alphanumerisches) Feld wurde kein Wert angegeben";
-      case DTA_MARKER_A_NOT_FOUND: return "Die Startmarkierung des A-Datensatzes wurde nicht gefunden";
-      case DTA_MARKER_C_NOT_FOUND: return "Die Startmarkierung des C-Datensatzes wurde nicht gefunden";
-      case DTA_MARKER_E_NOT_FOUND: return "Die Startmarkierung des E-Datensatzes wurde nicht gefunden";
-      case DTA_INVALID_SET_C_LEN: return "Die Satzl‰nge eines C-Datensatzes muﬂ zwischen 187 und 622 Byte betragen";
-      case DTA_INVALID_SET_LEN: return "Die Satzl‰nge eines A- bzw. E-Satzes muﬂ 128 Byte betragen";
-      case DTA_WAERUNG_NOT_EURO: return "als W‰hrung in der DTA-Datei ist nicht Euro eingetragen";
-      case DTA_INVALID_ISSUE_DATE: return "das Ausf¸hrungsdatum ist zu fr¸h oder zu sp‰t (max. 15 Tage nach Dateierstellung)";
-      case DTA_INVALID_DATE: return "das Datum ist ung¸ltig";
-      case DTA_FORMAT_ERROR: return "Formatfehler in der DTA-Datei";
-      case DTA_FILE_WITH_ERRORS: return "die DTA-Datei enth‰lt Fehler";
-      case INVALID_SEARCH_RANGE: return "ung¸ltiger Suchbereich angegeben (unten>oben)";
-      case KEY_NOT_FOUND: return "Die Suche lieferte kein Ergebnis";
-      case BAV_FALSE: return "BAV denkt, das Konto ist falsch (konto_check h‰lt es f¸r richtig)";
-      case LUT2_NO_USER_BLOCK: return "User-Blocks m¸ssen einen Typ > 500 haben";
-      case INVALID_SET: return "f¸r ein LUT-Set sind nur die Werte 0, 1 oder 2 mˆglich";
-      case NO_GERMAN_BIC: return "Ein Konto kann kann nur f¸r deutsche Banken gepr¸ft werden";
-      case IPI_CHECK_INVALID_LENGTH: return "Der zu validierende strukturierete Verwendungszweck muﬂ genau 20 Zeichen enthalten";
-      case IPI_INVALID_CHARACTER: return "Im strukturierten Verwendungszweck d¸rfen nur alphanumerische Zeichen vorkommen";
-      case IPI_INVALID_LENGTH: return "Die L‰nge des IPI-Verwendungszwecks darf maximal 18 Byte sein";
-      case LUT1_FILE_USED: return "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen";
-      case MISSING_PARAMETER: return "F¸r die aufgerufene Funktion fehlt ein notwendiger Parameter";
-      case IBAN2BIC_ONLY_GERMAN: return "Die Funktion iban2bic() arbeitet nur mit deutschen Bankleitzahlen";
-      case IBAN_OK_KTO_NOT: return "Die Pr¸fziffer der IBAN stimmt, die der Kontonummer nicht";
-      case KTO_OK_IBAN_NOT: return "Die Pr¸fziffer der Kontonummer stimmt, die der IBAN nicht";
-      case TOO_MANY_SLOTS: return "Es sind nur maximal 500 Slots pro LUT-Datei mˆglich (Neukompilieren erforderlich)";
-      case INIT_FATAL_ERROR: return "Initialisierung fehlgeschlagen (init_wait geblockt)";
-      case INCREMENTAL_INIT_NEEDS_INFO: return "Ein inkrementelles Initialisieren benˆtigt einen Info-Block in der LUT-Datei";
-      case INCREMENTAL_INIT_FROM_DIFFERENT_FILE: return "Ein inkrementelles Initialisieren mit einer anderen LUT-Datei ist nicht mˆglich";
-      case DEBUG_ONLY_FUNCTION: return "Die Funktion ist nur in der Debug-Version vorhanden";
-      case LUT2_INVALID: return "Kein Datensatz der LUT-Datei ist aktuell g¸ltig";
-      case LUT2_NOT_YET_VALID: return "Der Datensatz ist noch nicht g¸ltig";
-      case LUT2_NO_LONGER_VALID: return "Der Datensatz ist nicht mehr g¸ltig";
-      case LUT2_GUELTIGKEIT_SWAPPED: return "Im G¸ltigkeitsdatum sind Anfangs- und Enddatum vertauscht";
-      case LUT2_INVALID_GUELTIGKEIT: return "Das angegebene G¸ltigkeitsdatum ist ung¸ltig (Sollformat ist JJJJMMTT-JJJJMMTT)";
-      case LUT2_INDEX_OUT_OF_RANGE: return "Der Index f¸r die Filiale ist ung¸ltig";
-      case LUT2_INIT_IN_PROGRESS: return "Die Bibliothek wird gerade neu initialisiert";
-      case LUT2_BLZ_NOT_INITIALIZED: return "Das Feld BLZ wurde nicht initialisiert";
-      case LUT2_FILIALEN_NOT_INITIALIZED: return "Das Feld Filialen wurde nicht initialisiert";
-      case LUT2_NAME_NOT_INITIALIZED: return "Das Feld Bankname wurde nicht initialisiert";
-      case LUT2_PLZ_NOT_INITIALIZED: return "Das Feld PLZ wurde nicht initialisiert";
-      case LUT2_ORT_NOT_INITIALIZED: return "Das Feld Ort wurde nicht initialisiert";
-      case LUT2_NAME_KURZ_NOT_INITIALIZED: return "Das Feld Kurzname wurde nicht initialisiert";
-      case LUT2_PAN_NOT_INITIALIZED: return "Das Feld PAN wurde nicht initialisiert";
-      case LUT2_BIC_NOT_INITIALIZED: return "Das Feld BIC wurde nicht initialisiert";
-      case LUT2_PZ_NOT_INITIALIZED: return "Das Feld Pr¸fziffer wurde nicht initialisiert";
-      case LUT2_NR_NOT_INITIALIZED: return "Das Feld NR wurde nicht initialisiert";
-      case LUT2_AENDERUNG_NOT_INITIALIZED: return "Das Feld ƒnderung wurde nicht initialisiert";
-      case LUT2_LOESCHUNG_NOT_INITIALIZED: return "Das Feld Lˆschung wurde nicht initialisiert";
-      case LUT2_NACHFOLGE_BLZ_NOT_INITIALIZED: return "Das Feld Nachfolge-BLZ wurde nicht initialisiert";
-      case LUT2_NOT_INITIALIZED: return "die Programmbibliothek wurde noch nicht initialisiert";
-      case LUT2_FILIALEN_MISSING: return "der Block mit der Filialenanzahl fehlt in der LUT-Datei";
-      case LUT2_PARTIAL_OK: return "es wurden nicht alle Blocks geladen";
-      case LUT2_Z_BUF_ERROR: return "Buffer error in den ZLIB Routinen";
-      case LUT2_Z_MEM_ERROR: return "Memory error in den ZLIB-Routinen";
-      case LUT2_Z_DATA_ERROR: return "Datenfehler im komprimierten LUT-Block";
-      case LUT2_BLOCK_NOT_IN_FILE: return "Der Block ist nicht in der LUT-Datei enthalten";
-      case LUT2_DECOMPRESS_ERROR: return "Fehler beim Dekomprimieren eines LUT-Blocks";
-      case LUT2_COMPRESS_ERROR: return "Fehler beim Komprimieren eines LUT-Blocks";
-      case LUT2_FILE_CORRUPTED: return "Die LUT-Datei ist korrumpiert";
-      case LUT2_NO_SLOT_FREE: return "Im Inhaltsverzeichnis der LUT-Datei ist kein Slot mehr frei";
-      case UNDEFINED_SUBMETHOD: return "Die (Unter)Methode ist nicht definiert";
-      case EXCLUDED_AT_COMPILETIME: return "Der benˆtigte Programmteil wurde beim Kompilieren deaktiviert";
-      case INVALID_LUT_VERSION: return "Die Versionsnummer f¸r die LUT-Datei ist ung¸ltig";
-      case INVALID_PARAMETER_STELLE1: return "ung¸ltiger Pr¸fparameter (erste zu pr¸fende Stelle)";
-      case INVALID_PARAMETER_COUNT: return "ung¸ltiger Pr¸fparameter (Anzahl zu pr¸fender Stellen)";
-      case INVALID_PARAMETER_PRUEFZIFFER: return "ung¸ltiger Pr¸fparameter (Position der Pr¸fziffer)";
-      case INVALID_PARAMETER_WICHTUNG: return "ung¸ltiger Pr¸fparameter (Wichtung)";
-      case INVALID_PARAMETER_METHODE: return "ung¸ltiger Pr¸fparameter (Rechenmethode)";
-      case LIBRARY_INIT_ERROR: return "Problem beim Initialisieren der globalen Variablen";
-      case LUT_CRC_ERROR: return "Pr¸fsummenfehler in der blz.lut Datei";
-      case FALSE_GELOESCHT: return "falsch (die BLZ wurde auﬂerdem gelˆscht)";
-      case OK_NO_CHK_GELOESCHT: return "ok, ohne Pr¸fung (die BLZ wurde allerdings gelˆscht)";
-      case OK_GELOESCHT: return "ok (die BLZ wurde allerdings gelˆscht)";
-      case BLZ_GELOESCHT: return "die Bankleitzahl wurde gelˆscht";
-      case INVALID_BLZ_FILE: return "Fehler in der blz.txt Datei (falsche Zeilenl‰nge)";
-      case LIBRARY_IS_NOT_THREAD_SAFE: return "undefinierte Funktion, die library wurde mit THREAD_SAFE=0 kompiliert";
-      case FATAL_ERROR: return "schwerer Fehler im Konto_check-Modul";
-      case INVALID_KTO_LENGTH: return "ein Konto muﬂ zwischen 1 und 10 Stellen haben";
-      case FILE_WRITE_ERROR: return "kann Datei nicht schreiben";
-      case FILE_READ_ERROR: return "kann Datei nicht lesen";
-      case ERROR_MALLOC: return "kann keinen Speicher allokieren";
-      case NO_BLZ_FILE: return "die blz.txt Datei wurde nicht gefunden";
-      case INVALID_LUT_FILE: return "die blz.lut Datei ist inkosistent/ung¸ltig";
-      case NO_LUT_FILE: return "die blz.lut Datei wurde nicht gefunden";
-      case INVALID_BLZ_LENGTH: return "die Bankleitzahl ist nicht achtstellig";
-      case INVALID_BLZ: return "die Bankleitzahl ist ung¸ltig";
-      case INVALID_KTO: return "das Konto ist ung¸ltig";
-      case NOT_IMPLEMENTED: return "die Methode wurde noch nicht implementiert";
-      case NOT_DEFINED: return "die Methode ist nicht definiert";
-      case FALSE: return "falsch";
-      case OK: return "ok";
-      case EE: if(eep)return (char *)eep; else return "";
-      case OK_NO_CHK: return "ok, ohne Pr¸fung";
-      case OK_TEST_BLZ_USED: return "ok, f¸r den Test wurde eine Test-BLZ verwendet";
-      case LUT2_VALID: return "Der Datensatz ist aktuell g¸ltig";
-      case LUT2_NO_VALID_DATE: return "Der Datensatz enth‰lt kein G¸ltigkeitsdatum";
-      case LUT1_SET_LOADED: return "Die Datei ist im alten LUT-Format (1.0/1.1)";
-      case LUT1_FILE_GENERATED: return "ok, es wurde allerdings eine LUT-Datei im alten Format (1.0/1.1) generiert";
-      case DTA_FILE_WITH_WARNINGS: return "In der DTAUS-Datei wurden kleinere Fehler gefunden";
-      case LUT_V2_FILE_GENERATED: return "ok, es wurde allerdings eine LUT-Datei im Format 2.0 generiert (Compilerswitch)";
-      case KTO_CHECK_VALUE_REPLACED: return "ok, der Wert f¸r den Schl¸ssel wurde ¸berschrieben";
-      case OK_UNTERKONTO_POSSIBLE: return "wahrscheinlich ok, die Kontonummer kann allerdings (nicht angegebene) Unterkonten enthalten";
-      case OK_UNTERKONTO_GIVEN: return "wahrscheinlich ok, die Kontonummer enth‰lt eine Unterkontonummer";
-      case OK_SLOT_CNT_MIN_USED: return "ok, die Anzahl Slots wurde auf SLOT_CNT_MIN (60) hochgesetzt";
-      case SOME_KEYS_NOT_FOUND: return "ok, ein(ige) Schl¸ssel wurden nicht gefunden";
-      case LUT2_KTO_NOT_CHECKED: return "Die Bankverbindung wurde nicht getestet";
-      case LUT2_OK_WITHOUT_IBAN_RULES: return "Es wurden fast alle Blocks (auﬂer den IBAN-Regeln) geladen";
-      case OK_NACHFOLGE_BLZ_USED: return "ok, f¸r die BLZ wurde allerdings die Nachfolge-BLZ eingesetzt";
-      case OK_KTO_REPLACED: return "ok, die Kontonummer wurde allerdings ersetzt";
-      case OK_BLZ_REPLACED: return "ok, die Bankleitzahl wurde allerdings ersetzt";
-      case OK_BLZ_KTO_REPLACED: return "ok, die Bankleitzahl und Kontonummer wurden allerdings ersetzt";
-      case OK_IBAN_WITHOUT_KC_TEST: return "ok, die Bankverbindung ist (ohne Test) als richtig anzusehen";
-      case OK_INVALID_FOR_IBAN: return "ok, f¸r die die IBAN ist (durch eine Regel) allerdings ein anderer BIC definiert";
-      case OK_HYPO_REQUIRES_KTO: return "ok, f¸r die BIC-Bestimmung der ehemaligen Hypo-Bank f¸r IBAN wird i.A. zus‰tzlich die Kontonummer benˆtigt";
-      case OK_KTO_REPLACED_NO_PZ: return "ok, die Kontonummer wurde ersetzt, die neue Kontonummer hat keine Pr¸fziffer";
-      case OK_UNTERKONTO_ATTACHED: return "ok, es wurde ein (weggelassenes) Unterkonto angef¸gt";
-      case OK_SHORT_BIC_USED: return "ok, f¸r den BIC wurde die Zweigstellennummer allerdings durch XXX ersetzt";
-      default: return "ung¸ltiger R¸ckgabewert";
-   }
-}
-
-/* Funktion kto_check_retval2dos() +ßßß1 */
-/* ###########################################################################
- * # Die Funktion kto_check_retval2dos() wandelt die numerischen R¸ckgabe-   #
- * # werte in Klartext mit den Umlauten in DOS-Kodierung (CP850) um.         #
- * #                                                                         #
- * # Copyright (C) 2007 Michael Plugge <m.plugge@hs-mannheim.de>             #
- * ###########################################################################
- */
-
-DLL_EXPORT const char *kto_check_retval2dos(int retval)
-{
-   switch(retval){
-      case IBAN_ONLY_GERMAN: return "Es werden nur deutsche IBANs unterstÅtzt";
-      case INVALID_PARAMETER_TYPE: return "Falscher Parametertyp fÅr die Funktion";
-      case BIC_ONLY_GERMAN: return "Es werden nur deutsche BICs unterstÅtzt";
-      case INVALID_BIC_LENGTH: return "Die LÑ nge des BIC mu· genau 8 oder 11 Zeichen sein";
-      case IBAN_CHKSUM_OK_RULE_IGNORED_BLZ: return "Die IBAN-PrÅfsumme stimmt, die BLZ sollte aber durch eine zentrale BLZ ersetzt werden. Die Richtigkeit der IBAN kann nur mit einer Anfrage bei der Bank ermittelt werden";
-      case IBAN_CHKSUM_OK_KC_NOT_INITIALIZED: return "Die IBAN-PrÅfsumme stimmt, konto_check wurde jedoch noch nicht initialisiert (KontoprÅfung nicht mîglich)";
-      case IBAN_CHKSUM_OK_BLZ_INVALID: return "Die IBAN-PrÅfsumme stimmt, die BLZ ist allerdings ungÅltig";
-      case IBAN_CHKSUM_OK_NACHFOLGE_BLZ_DEFINED: return "Die IBAN-PrÅfsumme stimmt, fÅr die Bank gibt es allerdings eine (andere) Nachfolge-BLZ";
-      case LUT2_NOT_ALL_IBAN_BLOCKS_LOADED: return "es konnten nicht alle Datenblocks die fÅr die IBAN-Berechnung notwendig sind geladen werden";
-      case LUT2_NOT_YET_VALID_PARTIAL_OK: return "Der Datensatz ist noch nicht gÅltig, au·erdem konnten nicht alle Blocks geladen werden";
-      case LUT2_NO_LONGER_VALID_PARTIAL_OK: return "Der Datensatz ist nicht mehr gÅltig, au·erdem konnten nicht alle Blocks geladen werdeng";
-      case LUT2_BLOCKS_MISSING: return "ok, bei der Initialisierung konnten allerdings ein oder mehrere Blocks nicht geladen werden";
-      case FALSE_UNTERKONTO_ATTACHED: return "falsch, es wurde ein Unterkonto hinzugefÅgt (IBAN-Regel)";
-      case BLZ_BLACKLISTED: return "Die BLZ findet sich in der Ausschlussliste fÅr IBAN-Berechnungen";
-      case BLZ_MARKED_AS_DELETED: return "Die BLZ ist in der Bundesbank-Datei als gelîscht markiert und somit ungÅltig";
-      case IBAN_CHKSUM_OK_SOMETHING_WRONG: return "Die IBAN-PrÅfsumme stimmt, es gibt allerdings einen Fehler in der eigenen IBAN-Bestimmung (wahrscheinlich falsch)";
-      case IBAN_CHKSUM_OK_NO_IBAN_CALCULATION: return "Die IBAN-PrÅfsumme stimmt. Die Bank gibt IBANs nach nicht verîffentlichten Regeln heraus, die Richtigkeit der IBAN kann nur mit einer Anfrage bei der Bank ermittelt werden";
-      case IBAN_CHKSUM_OK_RULE_IGNORED: return "Die IBAN-PrÅfsumme stimmt, es wurde allerdings eine IBAN-Regel nicht beachtet (wahrscheinlich falsch)";
-      case IBAN_CHKSUM_OK_UNTERKTO_MISSING: return "Die IBAN-PrÅfsumme stimmt, es fehlt aber ein Unterkonto (wahrscheinlich falsch)";
-      case IBAN_INVALID_RULE: return "Die BLZ passt nicht zur angegebenen IBAN-Regel";
-      case IBAN_AMBIGUOUS_KTO: return "Die Kontonummer ist nicht eindeutig (es gibt mehrere Mîglichkeiten)";
-      case IBAN_RULE_NOT_IMPLEMENTED: return "Die IBAN-Regel ist noch nicht implementiert";
-      case IBAN_RULE_UNKNOWN: return "Die IBAN-Regel ist nicht bekannt";
-      case NO_IBAN_CALCULATION: return "FÅr die Bankverbindung ist keine IBAN-Berechnung erlaubt";
-      case OLD_BLZ_OK_NEW_NOT: return "Die Bankverbindung ist mit der alten BLZ stimmig, mit der Nachfolge-BLZ nicht";
-      case LUT2_IBAN_REGEL_NOT_INITIALIZED: return "Das Feld IBAN-Regel wurde nicht initialisiert";
-      case INVALID_IBAN_LENGTH: return "Die LÑ nge der IBAN fÅr das angegebene LÑ nderkÅrzel ist falsch";
-      case LUT2_NO_ACCOUNT_GIVEN: return "Keine Bankverbindung/IBAN angegeben";
-      case LUT2_VOLLTEXT_INVALID_CHAR: return "UngÅltiges Zeichen ( ()+-/&.,\' ) fÅr die Volltextsuche gefunden";
-      case LUT2_VOLLTEXT_SINGLE_WORD_ONLY: return "Die Volltextsuche sucht jeweils nur ein einzelnes Wort, benutzen Sie lut_suche_multiple() zur Suche nach mehreren Worten";
-      case LUT_SUCHE_INVALID_RSC: return "die angegebene Suchresource ist ungÅltig";
-      case LUT_SUCHE_INVALID_CMD: return "bei der Suche sind im VerknÅpfungsstring nur die Zeichen a-z sowie + und - erlaubt";
-      case LUT_SUCHE_INVALID_CNT: return "bei der Suche mÅssen zwischen 1 und 26 Suchmuster angegeben werden";
-      case LUT2_VOLLTEXT_NOT_INITIALIZED: return "Das Feld Volltext wurde nicht initialisiert";
-      case NO_OWN_IBAN_CALCULATION: return "das Institut erlaubt keine eigene IBAN-Berechnung";
-      case KTO_CHECK_UNSUPPORTED_COMPRESSION: return "die notwendige Kompressions-Bibliothek wurde beim Kompilieren nicht eingebunden";
-      case KTO_CHECK_INVALID_COMPRESSION_LIB: return "der angegebene Wert fÅr die Default-Kompression ist ungÅltig";
-      case OK_UNTERKONTO_ATTACHED_OLD: return "(nicht mehr als Fehler, sondern positive Ausgabe - Dummy fÅr den alten Wert)";
-      case KTO_CHECK_DEFAULT_BLOCK_INVALID: return "UngÅltige Signatur im Default-Block";
-      case KTO_CHECK_DEFAULT_BLOCK_FULL: return "Die maximale Anzahl EintrÑ ge fÅr den Default-Block wurde erreicht";
-      case KTO_CHECK_NO_DEFAULT_BLOCK: return "Es wurde noch kein Default-Block angelegt";
-      case KTO_CHECK_KEY_NOT_FOUND: return "Der angegebene SchlÅssel wurde im Default-Block nicht gefunden";
-      case LUT2_NO_LONGER_VALID_BETTER: return "Beide DatensÑ tze sind nicht mehr gÅltig, dieser ist aber jÅnger als der andere";
-      case DTA_SRC_KTO_DIFFERENT: return "Die Auftraggeber-Kontonummer des C-Datensatzes unterscheidet sich von der des A-Satzes";
-      case DTA_SRC_BLZ_DIFFERENT: return "Die Auftraggeber-Bankleitzahl des C-Datensatzes unterscheidet sich von der des A-Satzes";
-      case DTA_CR_LF_IN_FILE: return "Die DTA-Datei enthÑ lt (unzulÑ ssige) ZeilenvorschÅbe";
-      case DTA_INVALID_C_EXTENSION: return "ungÅltiger Typ bei einem Erweiterungsblock eines C-Datensatzes";
-      case DTA_FOUND_SET_A_NOT_C: return "Es wurde ein C-Datensatz erwartet, jedoch ein E-Satz gefunden";
-      case DTA_FOUND_SET_E_NOT_C: return "Es wurde ein C-Datensatz erwartet, jedoch ein E-Satz gefunden";
-      case DTA_FOUND_SET_C_NOT_EXTENSION: return "Es wurde ein C-Datensatzerweiterung erwartet, jedoch ein C-Satz gefunden";
-      case DTA_FOUND_SET_E_NOT_EXTENSION: return "Es wurde ein C-Datensatzerweiterung erwartet, jedoch ein E-Satz gefunden";
-      case DTA_INVALID_EXTENSION_COUNT: return "Die Anzahl Erweiterungen pa·t nicht zur BlocklÑ nge";
-      case DTA_INVALID_NUM: return "UngÅltige Zeichen in numerischem Feld";
-      case DTA_INVALID_CHARS: return "UngÅltige Zeichen im Textfeld";
-      case DTA_CURRENCY_NOT_EURO: return "Die WÑ hrung des DTA-Datensatzes ist nicht Euro";
-      case DTA_EMPTY_AMOUNT: return "In einem DTA-Datensatz wurde kein Betrag angegeben";
-      case DTA_INVALID_TEXT_KEY: return "UngÅltiger TextschlÅssel in der DTA-Datei";
-      case DTA_EMPTY_STRING: return "FÅr ein (alphanumerisches) Feld wurde kein Wert angegeben";
-      case DTA_MARKER_A_NOT_FOUND: return "Die Startmarkierung des A-Datensatzes wurde nicht gefunden";
-      case DTA_MARKER_C_NOT_FOUND: return "Die Startmarkierung des C-Datensatzes wurde nicht gefunden";
-      case DTA_MARKER_E_NOT_FOUND: return "Die Startmarkierung des E-Datensatzes wurde nicht gefunden";
-      case DTA_INVALID_SET_C_LEN: return "Die SatzlÑ nge eines C-Datensatzes mu· zwischen 187 und 622 Byte betragen";
-      case DTA_INVALID_SET_LEN: return "Die SatzlÑ nge eines A- bzw. E-Satzes mu· 128 Byte betragen";
-      case DTA_WAERUNG_NOT_EURO: return "als WÑ hrung in der DTA-Datei ist nicht Euro eingetragen";
-      case DTA_INVALID_ISSUE_DATE: return "das AusfÅhrungsdatum ist zu frÅh oder zu spÑ t (max. 15 Tage nach Dateierstellung)";
-      case DTA_INVALID_DATE: return "das Datum ist ungÅltig";
-      case DTA_FORMAT_ERROR: return "Formatfehler in der DTA-Datei";
-      case DTA_FILE_WITH_ERRORS: return "die DTA-Datei enthÑ lt Fehler";
-      case INVALID_SEARCH_RANGE: return "ungÅltiger Suchbereich angegeben (unten>oben)";
-      case KEY_NOT_FOUND: return "Die Suche lieferte kein Ergebnis";
-      case BAV_FALSE: return "BAV denkt, das Konto ist falsch (konto_check hÑ lt es fÅr richtig)";
-      case LUT2_NO_USER_BLOCK: return "User-Blocks mÅssen einen Typ > 500 haben";
-      case INVALID_SET: return "fÅr ein LUT-Set sind nur die Werte 0, 1 oder 2 mîglich";
-      case NO_GERMAN_BIC: return "Ein Konto kann kann nur fÅr deutsche Banken geprÅft werden";
-      case IPI_CHECK_INVALID_LENGTH: return "Der zu validierende strukturierete Verwendungszweck mu· genau 20 Zeichen enthalten";
-      case IPI_INVALID_CHARACTER: return "Im strukturierten Verwendungszweck dÅrfen nur alphanumerische Zeichen vorkommen";
-      case IPI_INVALID_LENGTH: return "Die LÑ nge des IPI-Verwendungszwecks darf maximal 18 Byte sein";
-      case LUT1_FILE_USED: return "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen";
-      case MISSING_PARAMETER: return "FÅr die aufgerufene Funktion fehlt ein notwendiger Parameter";
-      case IBAN2BIC_ONLY_GERMAN: return "Die Funktion iban2bic() arbeitet nur mit deutschen Bankleitzahlen";
-      case IBAN_OK_KTO_NOT: return "Die PrÅfziffer der IBAN stimmt, die der Kontonummer nicht";
-      case KTO_OK_IBAN_NOT: return "Die PrÅfziffer der Kontonummer stimmt, die der IBAN nicht";
-      case TOO_MANY_SLOTS: return "Es sind nur maximal 500 Slots pro LUT-Datei mîglich (Neukompilieren erforderlich)";
-      case INIT_FATAL_ERROR: return "Initialisierung fehlgeschlagen (init_wait geblockt)";
-      case INCREMENTAL_INIT_NEEDS_INFO: return "Ein inkrementelles Initialisieren benîtigt einen Info-Block in der LUT-Datei";
-      case INCREMENTAL_INIT_FROM_DIFFERENT_FILE: return "Ein inkrementelles Initialisieren mit einer anderen LUT-Datei ist nicht mîglich";
-      case DEBUG_ONLY_FUNCTION: return "Die Funktion ist nur in der Debug-Version vorhanden";
-      case LUT2_INVALID: return "Kein Datensatz der LUT-Datei ist aktuell gÅltig";
-      case LUT2_NOT_YET_VALID: return "Der Datensatz ist noch nicht gÅltig";
-      case LUT2_NO_LONGER_VALID: return "Der Datensatz ist nicht mehr gÅltig";
-      case LUT2_GUELTIGKEIT_SWAPPED: return "Im GÅltigkeitsdatum sind Anfangs- und Enddatum vertauscht";
-      case LUT2_INVALID_GUELTIGKEIT: return "Das angegebene GÅltigkeitsdatum ist ungÅltig (Sollformat ist JJJJMMTT-JJJJMMTT)";
-      case LUT2_INDEX_OUT_OF_RANGE: return "Der Index fÅr die Filiale ist ungÅltig";
-      case LUT2_INIT_IN_PROGRESS: return "Die Bibliothek wird gerade neu initialisiert";
-      case LUT2_BLZ_NOT_INITIALIZED: return "Das Feld BLZ wurde nicht initialisiert";
-      case LUT2_FILIALEN_NOT_INITIALIZED: return "Das Feld Filialen wurde nicht initialisiert";
-      case LUT2_NAME_NOT_INITIALIZED: return "Das Feld Bankname wurde nicht initialisiert";
-      case LUT2_PLZ_NOT_INITIALIZED: return "Das Feld PLZ wurde nicht initialisiert";
-      case LUT2_ORT_NOT_INITIALIZED: return "Das Feld Ort wurde nicht initialisiert";
-      case LUT2_NAME_KURZ_NOT_INITIALIZED: return "Das Feld Kurzname wurde nicht initialisiert";
-      case LUT2_PAN_NOT_INITIALIZED: return "Das Feld PAN wurde nicht initialisiert";
-      case LUT2_BIC_NOT_INITIALIZED: return "Das Feld BIC wurde nicht initialisiert";
-      case LUT2_PZ_NOT_INITIALIZED: return "Das Feld PrÅfziffer wurde nicht initialisiert";
-      case LUT2_NR_NOT_INITIALIZED: return "Das Feld NR wurde nicht initialisiert";
-      case LUT2_AENDERUNG_NOT_INITIALIZED: return "Das Feld énderung wurde nicht initialisiert";
-      case LUT2_LOESCHUNG_NOT_INITIALIZED: return "Das Feld Lîschung wurde nicht initialisiert";
-      case LUT2_NACHFOLGE_BLZ_NOT_INITIALIZED: return "Das Feld Nachfolge-BLZ wurde nicht initialisiert";
-      case LUT2_NOT_INITIALIZED: return "die Programmbibliothek wurde noch nicht initialisiert";
-      case LUT2_FILIALEN_MISSING: return "der Block mit der Filialenanzahl fehlt in der LUT-Datei";
-      case LUT2_PARTIAL_OK: return "es wurden nicht alle Blocks geladen";
-      case LUT2_Z_BUF_ERROR: return "Buffer error in den ZLIB Routinen";
-      case LUT2_Z_MEM_ERROR: return "Memory error in den ZLIB-Routinen";
-      case LUT2_Z_DATA_ERROR: return "Datenfehler im komprimierten LUT-Block";
-      case LUT2_BLOCK_NOT_IN_FILE: return "Der Block ist nicht in der LUT-Datei enthalten";
-      case LUT2_DECOMPRESS_ERROR: return "Fehler beim Dekomprimieren eines LUT-Blocks";
-      case LUT2_COMPRESS_ERROR: return "Fehler beim Komprimieren eines LUT-Blocks";
-      case LUT2_FILE_CORRUPTED: return "Die LUT-Datei ist korrumpiert";
-      case LUT2_NO_SLOT_FREE: return "Im Inhaltsverzeichnis der LUT-Datei ist kein Slot mehr frei";
-      case UNDEFINED_SUBMETHOD: return "Die (Unter)Methode ist nicht definiert";
-      case EXCLUDED_AT_COMPILETIME: return "Der benîtigte Programmteil wurde beim Kompilieren deaktiviert";
-      case INVALID_LUT_VERSION: return "Die Versionsnummer fÅr die LUT-Datei ist ungÅltig";
-      case INVALID_PARAMETER_STELLE1: return "ungÅltiger PrÅfparameter (erste zu prÅfende Stelle)";
-      case INVALID_PARAMETER_COUNT: return "ungÅltiger PrÅfparameter (Anzahl zu prÅfender Stellen)";
-      case INVALID_PARAMETER_PRUEFZIFFER: return "ungÅltiger PrÅfparameter (Position der PrÅfziffer)";
-      case INVALID_PARAMETER_WICHTUNG: return "ungÅltiger PrÅfparameter (Wichtung)";
-      case INVALID_PARAMETER_METHODE: return "ungÅltiger PrÅfparameter (Rechenmethode)";
-      case LIBRARY_INIT_ERROR: return "Problem beim Initialisieren der globalen Variablen";
-      case LUT_CRC_ERROR: return "PrÅfsummenfehler in der blz.lut Datei";
-      case FALSE_GELOESCHT: return "falsch (die BLZ wurde au·erdem gelîscht)";
-      case OK_NO_CHK_GELOESCHT: return "ok, ohne PrÅfung (die BLZ wurde allerdings gelîscht)";
-      case OK_GELOESCHT: return "ok (die BLZ wurde allerdings gelîscht)";
-      case BLZ_GELOESCHT: return "die Bankleitzahl wurde gelîscht";
-      case INVALID_BLZ_FILE: return "Fehler in der blz.txt Datei (falsche ZeilenlÑ nge)";
-      case LIBRARY_IS_NOT_THREAD_SAFE: return "undefinierte Funktion, die library wurde mit THREAD_SAFE=0 kompiliert";
-      case FATAL_ERROR: return "schwerer Fehler im Konto_check-Modul";
-      case INVALID_KTO_LENGTH: return "ein Konto mu· zwischen 1 und 10 Stellen haben";
-      case FILE_WRITE_ERROR: return "kann Datei nicht schreiben";
-      case FILE_READ_ERROR: return "kann Datei nicht lesen";
-      case ERROR_MALLOC: return "kann keinen Speicher allokieren";
-      case NO_BLZ_FILE: return "die blz.txt Datei wurde nicht gefunden";
-      case INVALID_LUT_FILE: return "die blz.lut Datei ist inkosistent/ungÅltig";
-      case NO_LUT_FILE: return "die blz.lut Datei wurde nicht gefunden";
-      case INVALID_BLZ_LENGTH: return "die Bankleitzahl ist nicht achtstellig";
-      case INVALID_BLZ: return "die Bankleitzahl ist ungÅltig";
-      case INVALID_KTO: return "das Konto ist ungÅltig";
-      case NOT_IMPLEMENTED: return "die Methode wurde noch nicht implementiert";
-      case NOT_DEFINED: return "die Methode ist nicht definiert";
-      case FALSE: return "falsch";
-      case OK: return "ok";
-      case EE: if(eep)return (char *)eep; else return "";
-      case OK_NO_CHK: return "ok, ohne PrÅfung";
-      case OK_TEST_BLZ_USED: return "ok, fÅr den Test wurde eine Test-BLZ verwendet";
-      case LUT2_VALID: return "Der Datensatz ist aktuell gÅltig";
-      case LUT2_NO_VALID_DATE: return "Der Datensatz enthÑ lt kein GÅltigkeitsdatum";
-      case LUT1_SET_LOADED: return "Die Datei ist im alten LUT-Format (1.0/1.1)";
-      case LUT1_FILE_GENERATED: return "ok, es wurde allerdings eine LUT-Datei im alten Format (1.0/1.1) generiert";
-      case DTA_FILE_WITH_WARNINGS: return "In der DTAUS-Datei wurden kleinere Fehler gefunden";
-      case LUT_V2_FILE_GENERATED: return "ok, es wurde allerdings eine LUT-Datei im Format 2.0 generiert (Compilerswitch)";
-      case KTO_CHECK_VALUE_REPLACED: return "ok, der Wert fÅr den SchlÅssel wurde Åberschrieben";
-      case OK_UNTERKONTO_POSSIBLE: return "wahrscheinlich ok, die Kontonummer kann allerdings (nicht angegebene) Unterkonten enthalten";
-      case OK_UNTERKONTO_GIVEN: return "wahrscheinlich ok, die Kontonummer enthÑ lt eine Unterkontonummer";
-      case OK_SLOT_CNT_MIN_USED: return "ok, die Anzahl Slots wurde auf SLOT_CNT_MIN (60) hochgesetzt";
-      case SOME_KEYS_NOT_FOUND: return "ok, ein(ige) SchlÅssel wurden nicht gefunden";
-      case LUT2_KTO_NOT_CHECKED: return "Die Bankverbindung wurde nicht getestet";
-      case LUT2_OK_WITHOUT_IBAN_RULES: return "Es wurden fast alle Blocks (au·er den IBAN-Regeln) geladen";
-      case OK_NACHFOLGE_BLZ_USED: return "ok, fÅr die BLZ wurde allerdings die Nachfolge-BLZ eingesetzt";
-      case OK_KTO_REPLACED: return "ok, die Kontonummer wurde allerdings ersetzt";
-      case OK_BLZ_REPLACED: return "ok, die Bankleitzahl wurde allerdings ersetzt";
-      case OK_BLZ_KTO_REPLACED: return "ok, die Bankleitzahl und Kontonummer wurden allerdings ersetzt";
-      case OK_IBAN_WITHOUT_KC_TEST: return "ok, die Bankverbindung ist (ohne Test) als richtig anzusehen";
-      case OK_INVALID_FOR_IBAN: return "ok, fÅr die die IBAN ist (durch eine Regel) allerdings ein anderer BIC definiert";
-      case OK_HYPO_REQUIRES_KTO: return "ok, fÅr die BIC-Bestimmung der ehemaligen Hypo-Bank fÅr IBAN wird i.A. zusÑ tzlich die Kontonummer benîtigt";
-      case OK_KTO_REPLACED_NO_PZ: return "ok, die Kontonummer wurde ersetzt, die neue Kontonummer hat keine PrÅfziffer";
-      case OK_UNTERKONTO_ATTACHED: return "ok, es wurde ein (weggelassenes) Unterkonto angefÅgt";
-      case OK_SHORT_BIC_USED: return "ok, fÅr den BIC wurde die Zweigstellennummer allerdings durch XXX ersetzt";
-      default: return "ungÅltiger RÅckgabewert";
-   }
-}
-
-/* Funktion kto_check_retval2html() +ßßß1 */
-/* ###########################################################################
- * # Die Funktion kto_check_retval2html() wandelt die numerischen R¸ckgabe-  #
- * # werte in Klartext mit den Umlauten in HTML-Kodierung um.                #
- * #                                                                         #
- * # Copyright (C) 2007 Michael Plugge <m.plugge@hs-mannheim.de>             #
- * ###########################################################################
- */
-
-DLL_EXPORT const char *kto_check_retval2html(int retval)
-{
-   switch(retval){
-      case IBAN_ONLY_GERMAN: return "Es werden nur deutsche IBANs unterst&uuml;tzt";
-      case INVALID_PARAMETER_TYPE: return "Falscher Parametertyp f&uuml;r die Funktion";
-      case BIC_ONLY_GERMAN: return "Es werden nur deutsche BICs unterst&uuml;tzt";
-      case INVALID_BIC_LENGTH: return "Die L&auml;nge des BIC mu&szlig; genau 8 oder 11 Zeichen sein";
-      case IBAN_CHKSUM_OK_RULE_IGNORED_BLZ: return "Die IBAN-Pr&uuml;fsumme stimmt, die BLZ sollte aber durch eine zentrale BLZ ersetzt werden. Die Richtigkeit der IBAN kann nur mit einer Anfrage bei der Bank ermittelt werden";
-      case IBAN_CHKSUM_OK_KC_NOT_INITIALIZED: return "Die IBAN-Pr&uuml;fsumme stimmt, konto_check wurde jedoch noch nicht initialisiert (Kontopr&uuml;fung nicht m&ouml;glich)";
-      case IBAN_CHKSUM_OK_BLZ_INVALID: return "Die IBAN-Pr&uuml;fsumme stimmt, die BLZ ist allerdings ung&uuml;ltig";
-      case IBAN_CHKSUM_OK_NACHFOLGE_BLZ_DEFINED: return "Die IBAN-Pr&uuml;fsumme stimmt, f&uuml;r die Bank gibt es allerdings eine (andere) Nachfolge-BLZ";
-      case LUT2_NOT_ALL_IBAN_BLOCKS_LOADED: return "es konnten nicht alle Datenblocks die f&uuml;r die IBAN-Berechnung notwendig sind geladen werden";
-      case LUT2_NOT_YET_VALID_PARTIAL_OK: return "Der Datensatz ist noch nicht g&uuml;ltig, au&szlig;erdem konnten nicht alle Blocks geladen werden";
-      case LUT2_NO_LONGER_VALID_PARTIAL_OK: return "Der Datensatz ist nicht mehr g&uuml;ltig, au&szlig;erdem konnten nicht alle Blocks geladen werdeng";
-      case LUT2_BLOCKS_MISSING: return "ok, bei der Initialisierung konnten allerdings ein oder mehrere Blocks nicht geladen werden";
-      case FALSE_UNTERKONTO_ATTACHED: return "falsch, es wurde ein Unterkonto hinzugef&uuml;gt (IBAN-Regel)";
-      case BLZ_BLACKLISTED: return "Die BLZ findet sich in der Ausschlussliste f&uuml;r IBAN-Berechnungen";
-      case BLZ_MARKED_AS_DELETED: return "Die BLZ ist in der Bundesbank-Datei als gel&ouml;scht markiert und somit ung&uuml;ltig";
-      case IBAN_CHKSUM_OK_SOMETHING_WRONG: return "Die IBAN-Pr&uuml;fsumme stimmt, es gibt allerdings einen Fehler in der eigenen IBAN-Bestimmung (wahrscheinlich falsch)";
-      case IBAN_CHKSUM_OK_NO_IBAN_CALCULATION: return "Die IBAN-Pr&uuml;fsumme stimmt. Die Bank gibt IBANs nach nicht ver&ouml;ffentlichten Regeln heraus, die Richtigkeit der IBAN kann nur mit einer Anfrage bei der Bank ermittelt werden";
-      case IBAN_CHKSUM_OK_RULE_IGNORED: return "Die IBAN-Pr&uuml;fsumme stimmt, es wurde allerdings eine IBAN-Regel nicht beachtet (wahrscheinlich falsch)";
-      case IBAN_CHKSUM_OK_UNTERKTO_MISSING: return "Die IBAN-Pr&uuml;fsumme stimmt, es fehlt aber ein Unterkonto (wahrscheinlich falsch)";
-      case IBAN_INVALID_RULE: return "Die BLZ passt nicht zur angegebenen IBAN-Regel";
-      case IBAN_AMBIGUOUS_KTO: return "Die Kontonummer ist nicht eindeutig (es gibt mehrere M&ouml;glichkeiten)";
-      case IBAN_RULE_NOT_IMPLEMENTED: return "Die IBAN-Regel ist noch nicht implementiert";
-      case IBAN_RULE_UNKNOWN: return "Die IBAN-Regel ist nicht bekannt";
-      case NO_IBAN_CALCULATION: return "F&uuml;r die Bankverbindung ist keine IBAN-Berechnung erlaubt";
-      case OLD_BLZ_OK_NEW_NOT: return "Die Bankverbindung ist mit der alten BLZ stimmig, mit der Nachfolge-BLZ nicht";
-      case LUT2_IBAN_REGEL_NOT_INITIALIZED: return "Das Feld IBAN-Regel wurde nicht initialisiert";
-      case INVALID_IBAN_LENGTH: return "Die L&auml;nge der IBAN f&uuml;r das angegebene L&auml;nderk&uuml;rzel ist falsch";
-      case LUT2_NO_ACCOUNT_GIVEN: return "Keine Bankverbindung/IBAN angegeben";
-      case LUT2_VOLLTEXT_INVALID_CHAR: return "Ung&uuml;ltiges Zeichen ( ()+-/&amp;.,\' ) f&uuml;r die Volltextsuche gefunden";
-      case LUT2_VOLLTEXT_SINGLE_WORD_ONLY: return "Die Volltextsuche sucht jeweils nur ein einzelnes Wort, benutzen Sie lut_suche_multiple() zur Suche nach mehreren Worten";
-      case LUT_SUCHE_INVALID_RSC: return "die angegebene Suchresource ist ung&uuml;ltig";
-      case LUT_SUCHE_INVALID_CMD: return "bei der Suche sind im Verkn&uuml;pfungsstring nur die Zeichen a-z sowie + und - erlaubt";
-      case LUT_SUCHE_INVALID_CNT: return "bei der Suche m&uuml;ssen zwischen 1 und 26 Suchmuster angegeben werden";
-      case LUT2_VOLLTEXT_NOT_INITIALIZED: return "Das Feld Volltext wurde nicht initialisiert";
-      case NO_OWN_IBAN_CALCULATION: return "das Institut erlaubt keine eigene IBAN-Berechnung";
-      case KTO_CHECK_UNSUPPORTED_COMPRESSION: return "die notwendige Kompressions-Bibliothek wurde beim Kompilieren nicht eingebunden";
-      case KTO_CHECK_INVALID_COMPRESSION_LIB: return "der angegebene Wert f&uuml;r die Default-Kompression ist ung&uuml;ltig";
-      case OK_UNTERKONTO_ATTACHED_OLD: return "(nicht mehr als Fehler, sondern positive Ausgabe - Dummy f&uuml;r den alten Wert)";
-      case KTO_CHECK_DEFAULT_BLOCK_INVALID: return "Ung&uuml;ltige Signatur im Default-Block";
-      case KTO_CHECK_DEFAULT_BLOCK_FULL: return "Die maximale Anzahl Eintr&auml;ge f&uuml;r den Default-Block wurde erreicht";
-      case KTO_CHECK_NO_DEFAULT_BLOCK: return "Es wurde noch kein Default-Block angelegt";
-      case KTO_CHECK_KEY_NOT_FOUND: return "Der angegebene Schl&uuml;ssel wurde im Default-Block nicht gefunden";
-      case LUT2_NO_LONGER_VALID_BETTER: return "Beide Datens&auml;tze sind nicht mehr g&uuml;ltig, dieser ist aber j&uuml;nger als der andere";
-      case DTA_SRC_KTO_DIFFERENT: return "Die Auftraggeber-Kontonummer des C-Datensatzes unterscheidet sich von der des A-Satzes";
-      case DTA_SRC_BLZ_DIFFERENT: return "Die Auftraggeber-Bankleitzahl des C-Datensatzes unterscheidet sich von der des A-Satzes";
-      case DTA_CR_LF_IN_FILE: return "Die DTA-Datei enth&auml;lt (unzul&auml;ssige) Zeilenvorsch&uuml;be";
-      case DTA_INVALID_C_EXTENSION: return "ung&uuml;ltiger Typ bei einem Erweiterungsblock eines C-Datensatzes";
-      case DTA_FOUND_SET_A_NOT_C: return "Es wurde ein C-Datensatz erwartet, jedoch ein E-Satz gefunden";
-      case DTA_FOUND_SET_E_NOT_C: return "Es wurde ein C-Datensatz erwartet, jedoch ein E-Satz gefunden";
-      case DTA_FOUND_SET_C_NOT_EXTENSION: return "Es wurde ein C-Datensatzerweiterung erwartet, jedoch ein C-Satz gefunden";
-      case DTA_FOUND_SET_E_NOT_EXTENSION: return "Es wurde ein C-Datensatzerweiterung erwartet, jedoch ein E-Satz gefunden";
-      case DTA_INVALID_EXTENSION_COUNT: return "Die Anzahl Erweiterungen pa&szlig;t nicht zur Blockl&auml;nge";
-      case DTA_INVALID_NUM: return "Ung&uuml;ltige Zeichen in numerischem Feld";
-      case DTA_INVALID_CHARS: return "Ung&uuml;ltige Zeichen im Textfeld";
-      case DTA_CURRENCY_NOT_EURO: return "Die W&auml;hrung des DTA-Datensatzes ist nicht Euro";
-      case DTA_EMPTY_AMOUNT: return "In einem DTA-Datensatz wurde kein Betrag angegeben";
-      case DTA_INVALID_TEXT_KEY: return "Ung&uuml;ltiger Textschl&uuml;ssel in der DTA-Datei";
-      case DTA_EMPTY_STRING: return "F&uuml;r ein (alphanumerisches) Feld wurde kein Wert angegeben";
-      case DTA_MARKER_A_NOT_FOUND: return "Die Startmarkierung des A-Datensatzes wurde nicht gefunden";
-      case DTA_MARKER_C_NOT_FOUND: return "Die Startmarkierung des C-Datensatzes wurde nicht gefunden";
-      case DTA_MARKER_E_NOT_FOUND: return "Die Startmarkierung des E-Datensatzes wurde nicht gefunden";
-      case DTA_INVALID_SET_C_LEN: return "Die Satzl&auml;nge eines C-Datensatzes mu&szlig; zwischen 187 und 622 Byte betragen";
-      case DTA_INVALID_SET_LEN: return "Die Satzl&auml;nge eines A- bzw. E-Satzes mu&szlig; 128 Byte betragen";
-      case DTA_WAERUNG_NOT_EURO: return "als W&auml;hrung in der DTA-Datei ist nicht Euro eingetragen";
-      case DTA_INVALID_ISSUE_DATE: return "das Ausf&uuml;hrungsdatum ist zu fr&uuml;h oder zu sp&auml;t (max. 15 Tage nach Dateierstellung)";
-      case DTA_INVALID_DATE: return "das Datum ist ung&uuml;ltig";
-      case DTA_FORMAT_ERROR: return "Formatfehler in der DTA-Datei";
-      case DTA_FILE_WITH_ERRORS: return "die DTA-Datei enth&auml;lt Fehler";
-      case INVALID_SEARCH_RANGE: return "ung&uuml;ltiger Suchbereich angegeben (unten&gt;oben)";
-      case KEY_NOT_FOUND: return "Die Suche lieferte kein Ergebnis";
-      case BAV_FALSE: return "BAV denkt, das Konto ist falsch (konto_check h&auml;lt es f&uuml;r richtig)";
-      case LUT2_NO_USER_BLOCK: return "User-Blocks m&uuml;ssen einen Typ &gt; 500 haben";
-      case INVALID_SET: return "f&uuml;r ein LUT-Set sind nur die Werte 0, 1 oder 2 m&ouml;glich";
-      case NO_GERMAN_BIC: return "Ein Konto kann kann nur f&uuml;r deutsche Banken gepr&uuml;ft werden";
-      case IPI_CHECK_INVALID_LENGTH: return "Der zu validierende strukturierete Verwendungszweck mu&szlig; genau 20 Zeichen enthalten";
-      case IPI_INVALID_CHARACTER: return "Im strukturierten Verwendungszweck d&uuml;rfen nur alphanumerische Zeichen vorkommen";
-      case IPI_INVALID_LENGTH: return "Die L&auml;nge des IPI-Verwendungszwecks darf maximal 18 Byte sein";
-      case LUT1_FILE_USED: return "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen";
-      case MISSING_PARAMETER: return "F&uuml;r die aufgerufene Funktion fehlt ein notwendiger Parameter";
-      case IBAN2BIC_ONLY_GERMAN: return "Die Funktion iban2bic() arbeitet nur mit deutschen Bankleitzahlen";
-      case IBAN_OK_KTO_NOT: return "Die Pr&uuml;fziffer der IBAN stimmt, die der Kontonummer nicht";
-      case KTO_OK_IBAN_NOT: return "Die Pr&uuml;fziffer der Kontonummer stimmt, die der IBAN nicht";
-      case TOO_MANY_SLOTS: return "Es sind nur maximal 500 Slots pro LUT-Datei m&ouml;glich (Neukompilieren erforderlich)";
-      case INIT_FATAL_ERROR: return "Initialisierung fehlgeschlagen (init_wait geblockt)";
-      case INCREMENTAL_INIT_NEEDS_INFO: return "Ein inkrementelles Initialisieren ben&ouml;tigt einen Info-Block in der LUT-Datei";
-      case INCREMENTAL_INIT_FROM_DIFFERENT_FILE: return "Ein inkrementelles Initialisieren mit einer anderen LUT-Datei ist nicht m&ouml;glich";
-      case DEBUG_ONLY_FUNCTION: return "Die Funktion ist nur in der Debug-Version vorhanden";
-      case LUT2_INVALID: return "Kein Datensatz der LUT-Datei ist aktuell g&uuml;ltig";
-      case LUT2_NOT_YET_VALID: return "Der Datensatz ist noch nicht g&uuml;ltig";
-      case LUT2_NO_LONGER_VALID: return "Der Datensatz ist nicht mehr g&uuml;ltig";
-      case LUT2_GUELTIGKEIT_SWAPPED: return "Im G&uuml;ltigkeitsdatum sind Anfangs- und Enddatum vertauscht";
-      case LUT2_INVALID_GUELTIGKEIT: return "Das angegebene G&uuml;ltigkeitsdatum ist ung&uuml;ltig (Sollformat ist JJJJMMTT-JJJJMMTT)";
-      case LUT2_INDEX_OUT_OF_RANGE: return "Der Index f&uuml;r die Filiale ist ung&uuml;ltig";
-      case LUT2_INIT_IN_PROGRESS: return "Die Bibliothek wird gerade neu initialisiert";
-      case LUT2_BLZ_NOT_INITIALIZED: return "Das Feld BLZ wurde nicht initialisiert";
-      case LUT2_FILIALEN_NOT_INITIALIZED: return "Das Feld Filialen wurde nicht initialisiert";
-      case LUT2_NAME_NOT_INITIALIZED: return "Das Feld Bankname wurde nicht initialisiert";
-      case LUT2_PLZ_NOT_INITIALIZED: return "Das Feld PLZ wurde nicht initialisiert";
-      case LUT2_ORT_NOT_INITIALIZED: return "Das Feld Ort wurde nicht initialisiert";
-      case LUT2_NAME_KURZ_NOT_INITIALIZED: return "Das Feld Kurzname wurde nicht initialisiert";
-      case LUT2_PAN_NOT_INITIALIZED: return "Das Feld PAN wurde nicht initialisiert";
-      case LUT2_BIC_NOT_INITIALIZED: return "Das Feld BIC wurde nicht initialisiert";
-      case LUT2_PZ_NOT_INITIALIZED: return "Das Feld Pr&uuml;fziffer wurde nicht initialisiert";
-      case LUT2_NR_NOT_INITIALIZED: return "Das Feld NR wurde nicht initialisiert";
-      case LUT2_AENDERUNG_NOT_INITIALIZED: return "Das Feld &Auml;nderung wurde nicht initialisiert";
-      case LUT2_LOESCHUNG_NOT_INITIALIZED: return "Das Feld L&ouml;schung wurde nicht initialisiert";
-      case LUT2_NACHFOLGE_BLZ_NOT_INITIALIZED: return "Das Feld Nachfolge-BLZ wurde nicht initialisiert";
-      case LUT2_NOT_INITIALIZED: return "die Programmbibliothek wurde noch nicht initialisiert";
-      case LUT2_FILIALEN_MISSING: return "der Block mit der Filialenanzahl fehlt in der LUT-Datei";
-      case LUT2_PARTIAL_OK: return "es wurden nicht alle Blocks geladen";
-      case LUT2_Z_BUF_ERROR: return "Buffer error in den ZLIB Routinen";
-      case LUT2_Z_MEM_ERROR: return "Memory error in den ZLIB-Routinen";
-      case LUT2_Z_DATA_ERROR: return "Datenfehler im komprimierten LUT-Block";
-      case LUT2_BLOCK_NOT_IN_FILE: return "Der Block ist nicht in der LUT-Datei enthalten";
-      case LUT2_DECOMPRESS_ERROR: return "Fehler beim Dekomprimieren eines LUT-Blocks";
-      case LUT2_COMPRESS_ERROR: return "Fehler beim Komprimieren eines LUT-Blocks";
-      case LUT2_FILE_CORRUPTED: return "Die LUT-Datei ist korrumpiert";
-      case LUT2_NO_SLOT_FREE: return "Im Inhaltsverzeichnis der LUT-Datei ist kein Slot mehr frei";
-      case UNDEFINED_SUBMETHOD: return "Die (Unter)Methode ist nicht definiert";
-      case EXCLUDED_AT_COMPILETIME: return "Der ben&ouml;tigte Programmteil wurde beim Kompilieren deaktiviert";
-      case INVALID_LUT_VERSION: return "Die Versionsnummer f&uuml;r die LUT-Datei ist ung&uuml;ltig";
-      case INVALID_PARAMETER_STELLE1: return "ung&uuml;ltiger Pr&uuml;fparameter (erste zu pr&uuml;fende Stelle)";
-      case INVALID_PARAMETER_COUNT: return "ung&uuml;ltiger Pr&uuml;fparameter (Anzahl zu pr&uuml;fender Stellen)";
-      case INVALID_PARAMETER_PRUEFZIFFER: return "ung&uuml;ltiger Pr&uuml;fparameter (Position der Pr&uuml;fziffer)";
-      case INVALID_PARAMETER_WICHTUNG: return "ung&uuml;ltiger Pr&uuml;fparameter (Wichtung)";
-      case INVALID_PARAMETER_METHODE: return "ung&uuml;ltiger Pr&uuml;fparameter (Rechenmethode)";
-      case LIBRARY_INIT_ERROR: return "Problem beim Initialisieren der globalen Variablen";
-      case LUT_CRC_ERROR: return "Pr&uuml;fsummenfehler in der blz.lut Datei";
-      case FALSE_GELOESCHT: return "falsch (die BLZ wurde au&szlig;erdem gel&ouml;scht)";
-      case OK_NO_CHK_GELOESCHT: return "ok, ohne Pr&uuml;fung (die BLZ wurde allerdings gel&ouml;scht)";
-      case OK_GELOESCHT: return "ok (die BLZ wurde allerdings gel&ouml;scht)";
-      case BLZ_GELOESCHT: return "die Bankleitzahl wurde gel&ouml;scht";
-      case INVALID_BLZ_FILE: return "Fehler in der blz.txt Datei (falsche Zeilenl&auml;nge)";
-      case LIBRARY_IS_NOT_THREAD_SAFE: return "undefinierte Funktion, die library wurde mit THREAD_SAFE=0 kompiliert";
-      case FATAL_ERROR: return "schwerer Fehler im Konto_check-Modul";
-      case INVALID_KTO_LENGTH: return "ein Konto mu&szlig; zwischen 1 und 10 Stellen haben";
-      case FILE_WRITE_ERROR: return "kann Datei nicht schreiben";
-      case FILE_READ_ERROR: return "kann Datei nicht lesen";
-      case ERROR_MALLOC: return "kann keinen Speicher allokieren";
-      case NO_BLZ_FILE: return "die blz.txt Datei wurde nicht gefunden";
-      case INVALID_LUT_FILE: return "die blz.lut Datei ist inkosistent/ung&uuml;ltig";
-      case NO_LUT_FILE: return "die blz.lut Datei wurde nicht gefunden";
-      case INVALID_BLZ_LENGTH: return "die Bankleitzahl ist nicht achtstellig";
-      case INVALID_BLZ: return "die Bankleitzahl ist ung&uuml;ltig";
-      case INVALID_KTO: return "das Konto ist ung&uuml;ltig";
-      case NOT_IMPLEMENTED: return "die Methode wurde noch nicht implementiert";
-      case NOT_DEFINED: return "die Methode ist nicht definiert";
-      case FALSE: return "falsch";
-      case OK: return "ok";
-      case EE: if(eeh)return (char *)eeh; else return "";
-      case OK_NO_CHK: return "ok, ohne Pr&uuml;fung";
-      case OK_TEST_BLZ_USED: return "ok, f&uuml;r den Test wurde eine Test-BLZ verwendet";
-      case LUT2_VALID: return "Der Datensatz ist aktuell g&uuml;ltig";
-      case LUT2_NO_VALID_DATE: return "Der Datensatz enth&auml;lt kein G&uuml;ltigkeitsdatum";
-      case LUT1_SET_LOADED: return "Die Datei ist im alten LUT-Format (1.0/1.1)";
-      case LUT1_FILE_GENERATED: return "ok, es wurde allerdings eine LUT-Datei im alten Format (1.0/1.1) generiert";
-      case DTA_FILE_WITH_WARNINGS: return "In der DTAUS-Datei wurden kleinere Fehler gefunden";
-      case LUT_V2_FILE_GENERATED: return "ok, es wurde allerdings eine LUT-Datei im Format 2.0 generiert (Compilerswitch)";
-      case KTO_CHECK_VALUE_REPLACED: return "ok, der Wert f&uuml;r den Schl&uuml;ssel wurde &uuml;berschrieben";
-      case OK_UNTERKONTO_POSSIBLE: return "wahrscheinlich ok, die Kontonummer kann allerdings (nicht angegebene) Unterkonten enthalten";
-      case OK_UNTERKONTO_GIVEN: return "wahrscheinlich ok, die Kontonummer enth&auml;lt eine Unterkontonummer";
-      case OK_SLOT_CNT_MIN_USED: return "ok, die Anzahl Slots wurde auf SLOT_CNT_MIN (60) hochgesetzt";
-      case SOME_KEYS_NOT_FOUND: return "ok, ein(ige) Schl&uuml;ssel wurden nicht gefunden";
-      case LUT2_KTO_NOT_CHECKED: return "Die Bankverbindung wurde nicht getestet";
-      case LUT2_OK_WITHOUT_IBAN_RULES: return "Es wurden fast alle Blocks (au&szlig;er den IBAN-Regeln) geladen";
-      case OK_NACHFOLGE_BLZ_USED: return "ok, f&uuml;r die BLZ wurde allerdings die Nachfolge-BLZ eingesetzt";
-      case OK_KTO_REPLACED: return "ok, die Kontonummer wurde allerdings ersetzt";
-      case OK_BLZ_REPLACED: return "ok, die Bankleitzahl wurde allerdings ersetzt";
-      case OK_BLZ_KTO_REPLACED: return "ok, die Bankleitzahl und Kontonummer wurden allerdings ersetzt";
-      case OK_IBAN_WITHOUT_KC_TEST: return "ok, die Bankverbindung ist (ohne Test) als richtig anzusehen";
-      case OK_INVALID_FOR_IBAN: return "ok, f&uuml;r die die IBAN ist (durch eine Regel) allerdings ein anderer BIC definiert";
-      case OK_HYPO_REQUIRES_KTO: return "ok, f&uuml;r die BIC-Bestimmung der ehemaligen Hypo-Bank f&uuml;r IBAN wird i.A. zus&auml;tzlich die Kontonummer ben&ouml;tigt";
-      case OK_KTO_REPLACED_NO_PZ: return "ok, die Kontonummer wurde ersetzt, die neue Kontonummer hat keine Pr&uuml;fziffer";
-      case OK_UNTERKONTO_ATTACHED: return "ok, es wurde ein (weggelassenes) Unterkonto angef&uuml;gt";
-      case OK_SHORT_BIC_USED: return "ok, f&uuml;r den BIC wurde die Zweigstellennummer allerdings durch XXX ersetzt";
-      default: return "ung&uuml;ltiger R&uuml;ckgabewert";
-   }
-}
-
-/* Funktion kto_check_retval2utf8() +ßßß1 */
-/* ###########################################################################
- * # Die Funktion kto_check_retval2utf8() wandelt die numerischen R¸ckgabe-  #
- * # werte in Klartext mit den Umlauten in UTF-8-Kodierung um.               #
- * #                                                                         #
- * # Copyright (C) 2007 Michael Plugge <m.plugge@hs-mannheim.de>             #
- * ###########################################################################
- */
-
-DLL_EXPORT const char *kto_check_retval2utf8(int retval)
-{
-   switch(retval){
-      case IBAN_ONLY_GERMAN: return "Es werden nur deutsche IBANs unterst√ºtzt";
-      case INVALID_PARAMETER_TYPE: return "Falscher Parametertyp f√ºr die Funktion";
-      case BIC_ONLY_GERMAN: return "Es werden nur deutsche BICs unterst√ºtzt";
-      case INVALID_BIC_LENGTH: return "Die L√§nge des BIC mu√ü genau 8 oder 11 Zeichen sein";
-      case IBAN_CHKSUM_OK_RULE_IGNORED_BLZ: return "Die IBAN-Pr√ºfsumme stimmt, die BLZ sollte aber durch eine zentrale BLZ ersetzt werden. Die Richtigkeit der IBAN kann nur mit einer Anfrage bei der Bank ermittelt werden";
-      case IBAN_CHKSUM_OK_KC_NOT_INITIALIZED: return "Die IBAN-Pr√ºfsumme stimmt, konto_check wurde jedoch noch nicht initialisiert (Kontopr√ºfung nicht m√∂glich)";
-      case IBAN_CHKSUM_OK_BLZ_INVALID: return "Die IBAN-Pr√ºfsumme stimmt, die BLZ ist allerdings ung√ºltig";
-      case IBAN_CHKSUM_OK_NACHFOLGE_BLZ_DEFINED: return "Die IBAN-Pr√ºfsumme stimmt, f√ºr die Bank gibt es allerdings eine (andere) Nachfolge-BLZ";
-      case LUT2_NOT_ALL_IBAN_BLOCKS_LOADED: return "es konnten nicht alle Datenblocks die f√ºr die IBAN-Berechnung notwendig sind geladen werden";
-      case LUT2_NOT_YET_VALID_PARTIAL_OK: return "Der Datensatz ist noch nicht g√ºltig, au√üerdem konnten nicht alle Blocks geladen werden";
-      case LUT2_NO_LONGER_VALID_PARTIAL_OK: return "Der Datensatz ist nicht mehr g√ºltig, au√üerdem konnten nicht alle Blocks geladen werdeng";
-      case LUT2_BLOCKS_MISSING: return "ok, bei der Initialisierung konnten allerdings ein oder mehrere Blocks nicht geladen werden";
-      case FALSE_UNTERKONTO_ATTACHED: return "falsch, es wurde ein Unterkonto hinzugef√ºgt (IBAN-Regel)";
-      case BLZ_BLACKLISTED: return "Die BLZ findet sich in der Ausschlussliste f√ºr IBAN-Berechnungen";
-      case BLZ_MARKED_AS_DELETED: return "Die BLZ ist in der Bundesbank-Datei als gel√∂scht markiert und somit ung√ºltig";
-      case IBAN_CHKSUM_OK_SOMETHING_WRONG: return "Die IBAN-Pr√ºfsumme stimmt, es gibt allerdings einen Fehler in der eigenen IBAN-Bestimmung (wahrscheinlich falsch)";
-      case IBAN_CHKSUM_OK_NO_IBAN_CALCULATION: return "Die IBAN-Pr√ºfsumme stimmt. Die Bank gibt IBANs nach nicht ver√∂ffentlichten Regeln heraus, die Richtigkeit der IBAN kann nur mit einer Anfrage bei der Bank ermittelt werden";
-      case IBAN_CHKSUM_OK_RULE_IGNORED: return "Die IBAN-Pr√ºfsumme stimmt, es wurde allerdings eine IBAN-Regel nicht beachtet (wahrscheinlich falsch)";
-      case IBAN_CHKSUM_OK_UNTERKTO_MISSING: return "Die IBAN-Pr√ºfsumme stimmt, es fehlt aber ein Unterkonto (wahrscheinlich falsch)";
-      case IBAN_INVALID_RULE: return "Die BLZ passt nicht zur angegebenen IBAN-Regel";
-      case IBAN_AMBIGUOUS_KTO: return "Die Kontonummer ist nicht eindeutig (es gibt mehrere M√∂glichkeiten)";
-      case IBAN_RULE_NOT_IMPLEMENTED: return "Die IBAN-Regel ist noch nicht implementiert";
-      case IBAN_RULE_UNKNOWN: return "Die IBAN-Regel ist nicht bekannt";
-      case NO_IBAN_CALCULATION: return "F√ºr die Bankverbindung ist keine IBAN-Berechnung erlaubt";
-      case OLD_BLZ_OK_NEW_NOT: return "Die Bankverbindung ist mit der alten BLZ stimmig, mit der Nachfolge-BLZ nicht";
-      case LUT2_IBAN_REGEL_NOT_INITIALIZED: return "Das Feld IBAN-Regel wurde nicht initialisiert";
-      case INVALID_IBAN_LENGTH: return "Die L√§nge der IBAN f√ºr das angegebene L√§nderk√ºrzel ist falsch";
-      case LUT2_NO_ACCOUNT_GIVEN: return "Keine Bankverbindung/IBAN angegeben";
-      case LUT2_VOLLTEXT_INVALID_CHAR: return "Ung√ºltiges Zeichen ( ()+-/&.,\' ) f√ºr die Volltextsuche gefunden";
-      case LUT2_VOLLTEXT_SINGLE_WORD_ONLY: return "Die Volltextsuche sucht jeweils nur ein einzelnes Wort, benutzen Sie lut_suche_multiple() zur Suche nach mehreren Worten";
-      case LUT_SUCHE_INVALID_RSC: return "die angegebene Suchresource ist ung√ºltig";
-      case LUT_SUCHE_INVALID_CMD: return "bei der Suche sind im Verkn√ºpfungsstring nur die Zeichen a-z sowie + und - erlaubt";
-      case LUT_SUCHE_INVALID_CNT: return "bei der Suche m√ºssen zwischen 1 und 26 Suchmuster angegeben werden";
-      case LUT2_VOLLTEXT_NOT_INITIALIZED: return "Das Feld Volltext wurde nicht initialisiert";
-      case NO_OWN_IBAN_CALCULATION: return "das Institut erlaubt keine eigene IBAN-Berechnung";
-      case KTO_CHECK_UNSUPPORTED_COMPRESSION: return "die notwendige Kompressions-Bibliothek wurde beim Kompilieren nicht eingebunden";
-      case KTO_CHECK_INVALID_COMPRESSION_LIB: return "der angegebene Wert f√ºr die Default-Kompression ist ung√ºltig";
-      case OK_UNTERKONTO_ATTACHED_OLD: return "(nicht mehr als Fehler, sondern positive Ausgabe - Dummy f√ºr den alten Wert)";
-      case KTO_CHECK_DEFAULT_BLOCK_INVALID: return "Ung√ºltige Signatur im Default-Block";
-      case KTO_CHECK_DEFAULT_BLOCK_FULL: return "Die maximale Anzahl Eintr√§ge f√ºr den Default-Block wurde erreicht";
-      case KTO_CHECK_NO_DEFAULT_BLOCK: return "Es wurde noch kein Default-Block angelegt";
-      case KTO_CHECK_KEY_NOT_FOUND: return "Der angegebene Schl√ºssel wurde im Default-Block nicht gefunden";
-      case LUT2_NO_LONGER_VALID_BETTER: return "Beide Datens√§tze sind nicht mehr g√ºltig, dieser ist aber j√ºnger als der andere";
-      case DTA_SRC_KTO_DIFFERENT: return "Die Auftraggeber-Kontonummer des C-Datensatzes unterscheidet sich von der des A-Satzes";
-      case DTA_SRC_BLZ_DIFFERENT: return "Die Auftraggeber-Bankleitzahl des C-Datensatzes unterscheidet sich von der des A-Satzes";
-      case DTA_CR_LF_IN_FILE: return "Die DTA-Datei enth√§lt (unzul√§ssige) Zeilenvorsch√ºbe";
-      case DTA_INVALID_C_EXTENSION: return "ung√ºltiger Typ bei einem Erweiterungsblock eines C-Datensatzes";
-      case DTA_FOUND_SET_A_NOT_C: return "Es wurde ein C-Datensatz erwartet, jedoch ein E-Satz gefunden";
-      case DTA_FOUND_SET_E_NOT_C: return "Es wurde ein C-Datensatz erwartet, jedoch ein E-Satz gefunden";
-      case DTA_FOUND_SET_C_NOT_EXTENSION: return "Es wurde ein C-Datensatzerweiterung erwartet, jedoch ein C-Satz gefunden";
-      case DTA_FOUND_SET_E_NOT_EXTENSION: return "Es wurde ein C-Datensatzerweiterung erwartet, jedoch ein E-Satz gefunden";
-      case DTA_INVALID_EXTENSION_COUNT: return "Die Anzahl Erweiterungen pa√üt nicht zur Blockl√§nge";
-      case DTA_INVALID_NUM: return "Ung√ºltige Zeichen in numerischem Feld";
-      case DTA_INVALID_CHARS: return "Ung√ºltige Zeichen im Textfeld";
-      case DTA_CURRENCY_NOT_EURO: return "Die W√§hrung des DTA-Datensatzes ist nicht Euro";
-      case DTA_EMPTY_AMOUNT: return "In einem DTA-Datensatz wurde kein Betrag angegeben";
-      case DTA_INVALID_TEXT_KEY: return "Ung√ºltiger Textschl√ºssel in der DTA-Datei";
-      case DTA_EMPTY_STRING: return "F√ºr ein (alphanumerisches) Feld wurde kein Wert angegeben";
-      case DTA_MARKER_A_NOT_FOUND: return "Die Startmarkierung des A-Datensatzes wurde nicht gefunden";
-      case DTA_MARKER_C_NOT_FOUND: return "Die Startmarkierung des C-Datensatzes wurde nicht gefunden";
-      case DTA_MARKER_E_NOT_FOUND: return "Die Startmarkierung des E-Datensatzes wurde nicht gefunden";
-      case DTA_INVALID_SET_C_LEN: return "Die Satzl√§nge eines C-Datensatzes mu√ü zwischen 187 und 622 Byte betragen";
-      case DTA_INVALID_SET_LEN: return "Die Satzl√§nge eines A- bzw. E-Satzes mu√ü 128 Byte betragen";
-      case DTA_WAERUNG_NOT_EURO: return "als W√§hrung in der DTA-Datei ist nicht Euro eingetragen";
-      case DTA_INVALID_ISSUE_DATE: return "das Ausf√ºhrungsdatum ist zu fr√ºh oder zu sp√§t (max. 15 Tage nach Dateierstellung)";
-      case DTA_INVALID_DATE: return "das Datum ist ung√ºltig";
-      case DTA_FORMAT_ERROR: return "Formatfehler in der DTA-Datei";
-      case DTA_FILE_WITH_ERRORS: return "die DTA-Datei enth√§lt Fehler";
-      case INVALID_SEARCH_RANGE: return "ung√ºltiger Suchbereich angegeben (unten>oben)";
-      case KEY_NOT_FOUND: return "Die Suche lieferte kein Ergebnis";
-      case BAV_FALSE: return "BAV denkt, das Konto ist falsch (konto_check h√§lt es f√ºr richtig)";
-      case LUT2_NO_USER_BLOCK: return "User-Blocks m√ºssen einen Typ > 500 haben";
-      case INVALID_SET: return "f√ºr ein LUT-Set sind nur die Werte 0, 1 oder 2 m√∂glich";
-      case NO_GERMAN_BIC: return "Ein Konto kann kann nur f√ºr deutsche Banken gepr√ºft werden";
-      case IPI_CHECK_INVALID_LENGTH: return "Der zu validierende strukturierete Verwendungszweck mu√ü genau 20 Zeichen enthalten";
-      case IPI_INVALID_CHARACTER: return "Im strukturierten Verwendungszweck d√ºrfen nur alphanumerische Zeichen vorkommen";
-      case IPI_INVALID_LENGTH: return "Die L√§nge des IPI-Verwendungszwecks darf maximal 18 Byte sein";
-      case LUT1_FILE_USED: return "Es wurde eine LUT-Datei im Format 1.0/1.1 geladen";
-      case MISSING_PARAMETER: return "F√ºr die aufgerufene Funktion fehlt ein notwendiger Parameter";
-      case IBAN2BIC_ONLY_GERMAN: return "Die Funktion iban2bic() arbeitet nur mit deutschen Bankleitzahlen";
-      case IBAN_OK_KTO_NOT: return "Die Pr√ºfziffer der IBAN stimmt, die der Kontonummer nicht";
-      case KTO_OK_IBAN_NOT: return "Die Pr√ºfziffer der Kontonummer stimmt, die der IBAN nicht";
-      case TOO_MANY_SLOTS: return "Es sind nur maximal 500 Slots pro LUT-Datei m√∂glich (Neukompilieren erforderlich)";
-      case INIT_FATAL_ERROR: return "Initialisierung fehlgeschlagen (init_wait geblockt)";
-      case INCREMENTAL_INIT_NEEDS_INFO: return "Ein inkrementelles Initialisieren ben√∂tigt einen Info-Block in der LUT-Datei";
-      case INCREMENTAL_INIT_FROM_DIFFERENT_FILE: return "Ein inkrementelles Initialisieren mit einer anderen LUT-Datei ist nicht m√∂glich";
-      case DEBUG_ONLY_FUNCTION: return "Die Funktion ist nur in der Debug-Version vorhanden";
-      case LUT2_INVALID: return "Kein Datensatz der LUT-Datei ist aktuell g√ºltig";
-      case LUT2_NOT_YET_VALID: return "Der Datensatz ist noch nicht g√ºltig";
-      case LUT2_NO_LONGER_VALID: return "Der Datensatz ist nicht mehr g√ºltig";
-      case LUT2_GUELTIGKEIT_SWAPPED: return "Im G√ºltigkeitsdatum sind Anfangs- und Enddatum vertauscht";
-      case LUT2_INVALID_GUELTIGKEIT: return "Das angegebene G√ºltigkeitsdatum ist ung√ºltig (Sollformat ist JJJJMMTT-JJJJMMTT)";
-      case LUT2_INDEX_OUT_OF_RANGE: return "Der Index f√ºr die Filiale ist ung√ºltig";
-      case LUT2_INIT_IN_PROGRESS: return "Die Bibliothek wird gerade neu initialisiert";
-      case LUT2_BLZ_NOT_INITIALIZED: return "Das Feld BLZ wurde nicht initialisiert";
-      case LUT2_FILIALEN_NOT_INITIALIZED: return "Das Feld Filialen wurde nicht initialisiert";
-      case LUT2_NAME_NOT_INITIALIZED: return "Das Feld Bankname wurde nicht initialisiert";
-      case LUT2_PLZ_NOT_INITIALIZED: return "Das Feld PLZ wurde nicht initialisiert";
-      case LUT2_ORT_NOT_INITIALIZED: return "Das Feld Ort wurde nicht initialisiert";
-      case LUT2_NAME_KURZ_NOT_INITIALIZED: return "Das Feld Kurzname wurde nicht initialisiert";
-      case LUT2_PAN_NOT_INITIALIZED: return "Das Feld PAN wurde nicht initialisiert";
-      case LUT2_BIC_NOT_INITIALIZED: return "Das Feld BIC wurde nicht initialisiert";
-      case LUT2_PZ_NOT_INITIALIZED: return "Das Feld Pr√ºfziffer wurde nicht initialisiert";
-      case LUT2_NR_NOT_INITIALIZED: return "Das Feld NR wurde nicht initialisiert";
-      case LUT2_AENDERUNG_NOT_INITIALIZED: return "Das Feld √Ñnderung wurde nicht initialisiert";
-      case LUT2_LOESCHUNG_NOT_INITIALIZED: return "Das Feld L√∂schung wurde nicht initialisiert";
-      case LUT2_NACHFOLGE_BLZ_NOT_INITIALIZED: return "Das Feld Nachfolge-BLZ wurde nicht initialisiert";
-      case LUT2_NOT_INITIALIZED: return "die Programmbibliothek wurde noch nicht initialisiert";
-      case LUT2_FILIALEN_MISSING: return "der Block mit der Filialenanzahl fehlt in der LUT-Datei";
-      case LUT2_PARTIAL_OK: return "es wurden nicht alle Blocks geladen";
-      case LUT2_Z_BUF_ERROR: return "Buffer error in den ZLIB Routinen";
-      case LUT2_Z_MEM_ERROR: return "Memory error in den ZLIB-Routinen";
-      case LUT2_Z_DATA_ERROR: return "Datenfehler im komprimierten LUT-Block";
-      case LUT2_BLOCK_NOT_IN_FILE: return "Der Block ist nicht in der LUT-Datei enthalten";
-      case LUT2_DECOMPRESS_ERROR: return "Fehler beim Dekomprimieren eines LUT-Blocks";
-      case LUT2_COMPRESS_ERROR: return "Fehler beim Komprimieren eines LUT-Blocks";
-      case LUT2_FILE_CORRUPTED: return "Die LUT-Datei ist korrumpiert";
-      case LUT2_NO_SLOT_FREE: return "Im Inhaltsverzeichnis der LUT-Datei ist kein Slot mehr frei";
-      case UNDEFINED_SUBMETHOD: return "Die (Unter)Methode ist nicht definiert";
-      case EXCLUDED_AT_COMPILETIME: return "Der ben√∂tigte Programmteil wurde beim Kompilieren deaktiviert";
-      case INVALID_LUT_VERSION: return "Die Versionsnummer f√ºr die LUT-Datei ist ung√ºltig";
-      case INVALID_PARAMETER_STELLE1: return "ung√ºltiger Pr√ºfparameter (erste zu pr√ºfende Stelle)";
-      case INVALID_PARAMETER_COUNT: return "ung√ºltiger Pr√ºfparameter (Anzahl zu pr√ºfender Stellen)";
-      case INVALID_PARAMETER_PRUEFZIFFER: return "ung√ºltiger Pr√ºfparameter (Position der Pr√ºfziffer)";
-      case INVALID_PARAMETER_WICHTUNG: return "ung√ºltiger Pr√ºfparameter (Wichtung)";
-      case INVALID_PARAMETER_METHODE: return "ung√ºltiger Pr√ºfparameter (Rechenmethode)";
-      case LIBRARY_INIT_ERROR: return "Problem beim Initialisieren der globalen Variablen";
-      case LUT_CRC_ERROR: return "Pr√ºfsummenfehler in der blz.lut Datei";
-      case FALSE_GELOESCHT: return "falsch (die BLZ wurde au√üerdem gel√∂scht)";
-      case OK_NO_CHK_GELOESCHT: return "ok, ohne Pr√ºfung (die BLZ wurde allerdings gel√∂scht)";
-      case OK_GELOESCHT: return "ok (die BLZ wurde allerdings gel√∂scht)";
-      case BLZ_GELOESCHT: return "die Bankleitzahl wurde gel√∂scht";
-      case INVALID_BLZ_FILE: return "Fehler in der blz.txt Datei (falsche Zeilenl√§nge)";
-      case LIBRARY_IS_NOT_THREAD_SAFE: return "undefinierte Funktion, die library wurde mit THREAD_SAFE=0 kompiliert";
-      case FATAL_ERROR: return "schwerer Fehler im Konto_check-Modul";
-      case INVALID_KTO_LENGTH: return "ein Konto mu√ü zwischen 1 und 10 Stellen haben";
-      case FILE_WRITE_ERROR: return "kann Datei nicht schreiben";
-      case FILE_READ_ERROR: return "kann Datei nicht lesen";
-      case ERROR_MALLOC: return "kann keinen Speicher allokieren";
-      case NO_BLZ_FILE: return "die blz.txt Datei wurde nicht gefunden";
-      case INVALID_LUT_FILE: return "die blz.lut Datei ist inkosistent/ung√ºltig";
-      case NO_LUT_FILE: return "die blz.lut Datei wurde nicht gefunden";
-      case INVALID_BLZ_LENGTH: return "die Bankleitzahl ist nicht achtstellig";
-      case INVALID_BLZ: return "die Bankleitzahl ist ung√ºltig";
-      case INVALID_KTO: return "das Konto ist ung√ºltig";
-      case NOT_IMPLEMENTED: return "die Methode wurde noch nicht implementiert";
-      case NOT_DEFINED: return "die Methode ist nicht definiert";
-      case FALSE: return "falsch";
-      case OK: return "ok";
-      case EE: if(eep)return (char *)eep; else return "";
-      case OK_NO_CHK: return "ok, ohne Pr√ºfung";
-      case OK_TEST_BLZ_USED: return "ok, f√ºr den Test wurde eine Test-BLZ verwendet";
-      case LUT2_VALID: return "Der Datensatz ist aktuell g√ºltig";
-      case LUT2_NO_VALID_DATE: return "Der Datensatz enth√§lt kein G√ºltigkeitsdatum";
-      case LUT1_SET_LOADED: return "Die Datei ist im alten LUT-Format (1.0/1.1)";
-      case LUT1_FILE_GENERATED: return "ok, es wurde allerdings eine LUT-Datei im alten Format (1.0/1.1) generiert";
-      case DTA_FILE_WITH_WARNINGS: return "In der DTAUS-Datei wurden kleinere Fehler gefunden";
-      case LUT_V2_FILE_GENERATED: return "ok, es wurde allerdings eine LUT-Datei im Format 2.0 generiert (Compilerswitch)";
-      case KTO_CHECK_VALUE_REPLACED: return "ok, der Wert f√ºr den Schl√ºssel wurde √ºberschrieben";
-      case OK_UNTERKONTO_POSSIBLE: return "wahrscheinlich ok, die Kontonummer kann allerdings (nicht angegebene) Unterkonten enthalten";
-      case OK_UNTERKONTO_GIVEN: return "wahrscheinlich ok, die Kontonummer enth√§lt eine Unterkontonummer";
-      case OK_SLOT_CNT_MIN_USED: return "ok, die Anzahl Slots wurde auf SLOT_CNT_MIN (60) hochgesetzt";
-      case SOME_KEYS_NOT_FOUND: return "ok, ein(ige) Schl√ºssel wurden nicht gefunden";
-      case LUT2_KTO_NOT_CHECKED: return "Die Bankverbindung wurde nicht getestet";
-      case LUT2_OK_WITHOUT_IBAN_RULES: return "Es wurden fast alle Blocks (au√üer den IBAN-Regeln) geladen";
-      case OK_NACHFOLGE_BLZ_USED: return "ok, f√ºr die BLZ wurde allerdings die Nachfolge-BLZ eingesetzt";
-      case OK_KTO_REPLACED: return "ok, die Kontonummer wurde allerdings ersetzt";
-      case OK_BLZ_REPLACED: return "ok, die Bankleitzahl wurde allerdings ersetzt";
-      case OK_BLZ_KTO_REPLACED: return "ok, die Bankleitzahl und Kontonummer wurden allerdings ersetzt";
-      case OK_IBAN_WITHOUT_KC_TEST: return "ok, die Bankverbindung ist (ohne Test) als richtig anzusehen";
-      case OK_INVALID_FOR_IBAN: return "ok, f√ºr die die IBAN ist (durch eine Regel) allerdings ein anderer BIC definiert";
-      case OK_HYPO_REQUIRES_KTO: return "ok, f√ºr die BIC-Bestimmung der ehemaligen Hypo-Bank f√ºr IBAN wird i.A. zus√§tzlich die Kontonummer ben√∂tigt";
-      case OK_KTO_REPLACED_NO_PZ: return "ok, die Kontonummer wurde ersetzt, die neue Kontonummer hat keine Pr√ºfziffer";
-      case OK_UNTERKONTO_ATTACHED: return "ok, es wurde ein (weggelassenes) Unterkonto angef√ºgt";
-      case OK_SHORT_BIC_USED: return "ok, f√ºr den BIC wurde die Zweigstellennummer allerdings durch XXX ersetzt";
-      default: return "ung√ºltiger R√ºckgabewert";
-   }
-}
-
-/* Funktion kto_check_retval2txt_short() +ßßß1 */
-/* ###########################################################################
- * # Die Funktion kto_check_retval2txt_short() wandelt die numerischen       #
- * # R¸ckgabwerte in kurze Klartexte (symbolische Konstanten) um.            #
- * #                                                                         #
- * # Copyright (C) 2007 Michael Plugge <m.plugge@hs-mannheim.de>             #
- * ###########################################################################
- */
-
-DLL_EXPORT const char *kto_check_retval2txt_short(int retval)
-{
-   switch(retval){
-      case IBAN_ONLY_GERMAN: return "IBAN_ONLY_GERMAN";
-      case INVALID_PARAMETER_TYPE: return "INVALID_PARAMETER_TYPE";
-      case BIC_ONLY_GERMAN: return "BIC_ONLY_GERMAN";
-      case INVALID_BIC_LENGTH: return "INVALID_BIC_LENGTH";
-      case IBAN_CHKSUM_OK_RULE_IGNORED_BLZ: return "IBAN_CHKSUM_OK_RULE_IGNORED_BLZ";
-      case IBAN_CHKSUM_OK_KC_NOT_INITIALIZED: return "IBAN_CHKSUM_OK_KC_NOT_INITIALIZED";
-      case IBAN_CHKSUM_OK_BLZ_INVALID: return "IBAN_CHKSUM_OK_BLZ_INVALID";
-      case IBAN_CHKSUM_OK_NACHFOLGE_BLZ_DEFINED: return "IBAN_CHKSUM_OK_NACHFOLGE_BLZ_DEFINED";
-      case LUT2_NOT_ALL_IBAN_BLOCKS_LOADED: return "LUT2_NOT_ALL_IBAN_BLOCKS_LOADED";
-      case LUT2_NOT_YET_VALID_PARTIAL_OK: return "LUT2_NOT_YET_VALID_PARTIAL_OK";
-      case LUT2_NO_LONGER_VALID_PARTIAL_OK: return "LUT2_NO_LONGER_VALID_PARTIAL_OK";
-      case LUT2_BLOCKS_MISSING: return "LUT2_BLOCKS_MISSING";
-      case FALSE_UNTERKONTO_ATTACHED: return "FALSE_UNTERKONTO_ATTACHED";
-      case BLZ_BLACKLISTED: return "BLZ_BLACKLISTED";
-      case BLZ_MARKED_AS_DELETED: return "BLZ_MARKED_AS_DELETED";
-      case IBAN_CHKSUM_OK_SOMETHING_WRONG: return "IBAN_CHKSUM_OK_SOMETHING_WRONG";
-      case IBAN_CHKSUM_OK_NO_IBAN_CALCULATION: return "IBAN_CHKSUM_OK_NO_IBAN_CALCULATION";
-      case IBAN_CHKSUM_OK_RULE_IGNORED: return "IBAN_CHKSUM_OK_RULE_IGNORED";
-      case IBAN_CHKSUM_OK_UNTERKTO_MISSING: return "IBAN_CHKSUM_OK_UNTERKTO_MISSING";
-      case IBAN_INVALID_RULE: return "IBAN_INVALID_RULE";
-      case IBAN_AMBIGUOUS_KTO: return "IBAN_AMBIGUOUS_KTO";
-      case IBAN_RULE_NOT_IMPLEMENTED: return "IBAN_RULE_NOT_IMPLEMENTED";
-      case IBAN_RULE_UNKNOWN: return "IBAN_RULE_UNKNOWN";
-      case NO_IBAN_CALCULATION: return "NO_IBAN_CALCULATION";
-      case OLD_BLZ_OK_NEW_NOT: return "OLD_BLZ_OK_NEW_NOT";
-      case LUT2_IBAN_REGEL_NOT_INITIALIZED: return "LUT2_IBAN_REGEL_NOT_INITIALIZED";
-      case INVALID_IBAN_LENGTH: return "INVALID_IBAN_LENGTH";
-      case LUT2_NO_ACCOUNT_GIVEN: return "LUT2_NO_ACCOUNT_GIVEN";
-      case LUT2_VOLLTEXT_INVALID_CHAR: return "LUT2_VOLLTEXT_INVALID_CHAR";
-      case LUT2_VOLLTEXT_SINGLE_WORD_ONLY: return "LUT2_VOLLTEXT_SINGLE_WORD_ONLY";
-      case LUT_SUCHE_INVALID_RSC: return "LUT_SUCHE_INVALID_RSC";
-      case LUT_SUCHE_INVALID_CMD: return "LUT_SUCHE_INVALID_CMD";
-      case LUT_SUCHE_INVALID_CNT: return "LUT_SUCHE_INVALID_CNT";
-      case LUT2_VOLLTEXT_NOT_INITIALIZED: return "LUT2_VOLLTEXT_NOT_INITIALIZED";
-      case NO_OWN_IBAN_CALCULATION: return "NO_OWN_IBAN_CALCULATION";
-      case KTO_CHECK_UNSUPPORTED_COMPRESSION: return "KTO_CHECK_UNSUPPORTED_COMPRESSION";
-      case KTO_CHECK_INVALID_COMPRESSION_LIB: return "KTO_CHECK_INVALID_COMPRESSION_LIB";
-      case OK_UNTERKONTO_ATTACHED_OLD: return "OK_UNTERKONTO_ATTACHED_OLD";
-      case KTO_CHECK_DEFAULT_BLOCK_INVALID: return "KTO_CHECK_DEFAULT_BLOCK_INVALID";
-      case KTO_CHECK_DEFAULT_BLOCK_FULL: return "KTO_CHECK_DEFAULT_BLOCK_FULL";
-      case KTO_CHECK_NO_DEFAULT_BLOCK: return "KTO_CHECK_NO_DEFAULT_BLOCK";
-      case KTO_CHECK_KEY_NOT_FOUND: return "KTO_CHECK_KEY_NOT_FOUND";
-      case LUT2_NO_LONGER_VALID_BETTER: return "LUT2_NO_LONGER_VALID_BETTER";
-      case DTA_SRC_KTO_DIFFERENT: return "DTA_SRC_KTO_DIFFERENT";
-      case DTA_SRC_BLZ_DIFFERENT: return "DTA_SRC_BLZ_DIFFERENT";
-      case DTA_CR_LF_IN_FILE: return "DTA_CR_LF_IN_FILE";
-      case DTA_INVALID_C_EXTENSION: return "DTA_INVALID_C_EXTENSION";
-      case DTA_FOUND_SET_A_NOT_C: return "DTA_FOUND_SET_A_NOT_C";
-      case DTA_FOUND_SET_E_NOT_C: return "DTA_FOUND_SET_E_NOT_C";
-      case DTA_FOUND_SET_C_NOT_EXTENSION: return "DTA_FOUND_SET_C_NOT_EXTENSION";
-      case DTA_FOUND_SET_E_NOT_EXTENSION: return "DTA_FOUND_SET_E_NOT_EXTENSION";
-      case DTA_INVALID_EXTENSION_COUNT: return "DTA_INVALID_EXTENSION_COUNT";
-      case DTA_INVALID_NUM: return "DTA_INVALID_NUM";
-      case DTA_INVALID_CHARS: return "DTA_INVALID_CHARS";
-      case DTA_CURRENCY_NOT_EURO: return "DTA_CURRENCY_NOT_EURO";
-      case DTA_EMPTY_AMOUNT: return "DTA_EMPTY_AMOUNT";
-      case DTA_INVALID_TEXT_KEY: return "DTA_INVALID_TEXT_KEY";
-      case DTA_EMPTY_STRING: return "DTA_EMPTY_STRING";
-      case DTA_MARKER_A_NOT_FOUND: return "DTA_MARKER_A_NOT_FOUND";
-      case DTA_MARKER_C_NOT_FOUND: return "DTA_MARKER_C_NOT_FOUND";
-      case DTA_MARKER_E_NOT_FOUND: return "DTA_MARKER_E_NOT_FOUND";
-      case DTA_INVALID_SET_C_LEN: return "DTA_INVALID_SET_C_LEN";
-      case DTA_INVALID_SET_LEN: return "DTA_INVALID_SET_LEN";
-      case DTA_WAERUNG_NOT_EURO: return "DTA_WAERUNG_NOT_EURO";
-      case DTA_INVALID_ISSUE_DATE: return "DTA_INVALID_ISSUE_DATE";
-      case DTA_INVALID_DATE: return "DTA_INVALID_DATE";
-      case DTA_FORMAT_ERROR: return "DTA_FORMAT_ERROR";
-      case DTA_FILE_WITH_ERRORS: return "DTA_FILE_WITH_ERRORS";
-      case INVALID_SEARCH_RANGE: return "INVALID_SEARCH_RANGE";
-      case KEY_NOT_FOUND: return "KEY_NOT_FOUND";
-      case BAV_FALSE: return "BAV_FALSE";
-      case LUT2_NO_USER_BLOCK: return "LUT2_NO_USER_BLOCK";
-      case INVALID_SET: return "INVALID_SET";
-      case NO_GERMAN_BIC: return "NO_GERMAN_BIC";
-      case IPI_CHECK_INVALID_LENGTH: return "IPI_CHECK_INVALID_LENGTH";
-      case IPI_INVALID_CHARACTER: return "IPI_INVALID_CHARACTER";
-      case IPI_INVALID_LENGTH: return "IPI_INVALID_LENGTH";
-      case LUT1_FILE_USED: return "LUT1_FILE_USED";
-      case MISSING_PARAMETER: return "MISSING_PARAMETER";
-      case IBAN2BIC_ONLY_GERMAN: return "IBAN2BIC_ONLY_GERMAN";
-      case IBAN_OK_KTO_NOT: return "IBAN_OK_KTO_NOT";
-      case KTO_OK_IBAN_NOT: return "KTO_OK_IBAN_NOT";
-      case TOO_MANY_SLOTS: return "TOO_MANY_SLOTS";
-      case INIT_FATAL_ERROR: return "INIT_FATAL_ERROR";
-      case INCREMENTAL_INIT_NEEDS_INFO: return "INCREMENTAL_INIT_NEEDS_INFO";
-      case INCREMENTAL_INIT_FROM_DIFFERENT_FILE: return "INCREMENTAL_INIT_FROM_DIFFERENT_FILE";
-      case DEBUG_ONLY_FUNCTION: return "DEBUG_ONLY_FUNCTION";
-      case LUT2_INVALID: return "LUT2_INVALID";
-      case LUT2_NOT_YET_VALID: return "LUT2_NOT_YET_VALID";
-      case LUT2_NO_LONGER_VALID: return "LUT2_NO_LONGER_VALID";
-      case LUT2_GUELTIGKEIT_SWAPPED: return "LUT2_GUELTIGKEIT_SWAPPED";
-      case LUT2_INVALID_GUELTIGKEIT: return "LUT2_INVALID_GUELTIGKEIT";
-      case LUT2_INDEX_OUT_OF_RANGE: return "LUT2_INDEX_OUT_OF_RANGE";
-      case LUT2_INIT_IN_PROGRESS: return "LUT2_INIT_IN_PROGRESS";
-      case LUT2_BLZ_NOT_INITIALIZED: return "LUT2_BLZ_NOT_INITIALIZED";
-      case LUT2_FILIALEN_NOT_INITIALIZED: return "LUT2_FILIALEN_NOT_INITIALIZED";
-      case LUT2_NAME_NOT_INITIALIZED: return "LUT2_NAME_NOT_INITIALIZED";
-      case LUT2_PLZ_NOT_INITIALIZED: return "LUT2_PLZ_NOT_INITIALIZED";
-      case LUT2_ORT_NOT_INITIALIZED: return "LUT2_ORT_NOT_INITIALIZED";
-      case LUT2_NAME_KURZ_NOT_INITIALIZED: return "LUT2_NAME_KURZ_NOT_INITIALIZED";
-      case LUT2_PAN_NOT_INITIALIZED: return "LUT2_PAN_NOT_INITIALIZED";
-      case LUT2_BIC_NOT_INITIALIZED: return "LUT2_BIC_NOT_INITIALIZED";
-      case LUT2_PZ_NOT_INITIALIZED: return "LUT2_PZ_NOT_INITIALIZED";
-      case LUT2_NR_NOT_INITIALIZED: return "LUT2_NR_NOT_INITIALIZED";
-      case LUT2_AENDERUNG_NOT_INITIALIZED: return "LUT2_AENDERUNG_NOT_INITIALIZED";
-      case LUT2_LOESCHUNG_NOT_INITIALIZED: return "LUT2_LOESCHUNG_NOT_INITIALIZED";
-      case LUT2_NACHFOLGE_BLZ_NOT_INITIALIZED: return "LUT2_NACHFOLGE_BLZ_NOT_INITIALIZED";
-      case LUT2_NOT_INITIALIZED: return "LUT2_NOT_INITIALIZED";
-      case LUT2_FILIALEN_MISSING: return "LUT2_FILIALEN_MISSING";
-      case LUT2_PARTIAL_OK: return "LUT2_PARTIAL_OK";
-      case LUT2_Z_BUF_ERROR: return "LUT2_Z_BUF_ERROR";
-      case LUT2_Z_MEM_ERROR: return "LUT2_Z_MEM_ERROR";
-      case LUT2_Z_DATA_ERROR: return "LUT2_Z_DATA_ERROR";
-      case LUT2_BLOCK_NOT_IN_FILE: return "LUT2_BLOCK_NOT_IN_FILE";
-      case LUT2_DECOMPRESS_ERROR: return "LUT2_DECOMPRESS_ERROR";
-      case LUT2_COMPRESS_ERROR: return "LUT2_COMPRESS_ERROR";
-      case LUT2_FILE_CORRUPTED: return "LUT2_FILE_CORRUPTED";
-      case LUT2_NO_SLOT_FREE: return "LUT2_NO_SLOT_FREE";
-      case UNDEFINED_SUBMETHOD: return "UNDEFINED_SUBMETHOD";
-      case EXCLUDED_AT_COMPILETIME: return "EXCLUDED_AT_COMPILETIME";
-      case INVALID_LUT_VERSION: return "INVALID_LUT_VERSION";
-      case INVALID_PARAMETER_STELLE1: return "INVALID_PARAMETER_STELLE1";
-      case INVALID_PARAMETER_COUNT: return "INVALID_PARAMETER_COUNT";
-      case INVALID_PARAMETER_PRUEFZIFFER: return "INVALID_PARAMETER_PRUEFZIFFER";
-      case INVALID_PARAMETER_WICHTUNG: return "INVALID_PARAMETER_WICHTUNG";
-      case INVALID_PARAMETER_METHODE: return "INVALID_PARAMETER_METHODE";
-      case LIBRARY_INIT_ERROR: return "LIBRARY_INIT_ERROR";
-      case LUT_CRC_ERROR: return "LUT_CRC_ERROR";
-      case FALSE_GELOESCHT: return "FALSE_GELOESCHT";
-      case OK_NO_CHK_GELOESCHT: return "OK_NO_CHK_GELOESCHT";
-      case OK_GELOESCHT: return "OK_GELOESCHT";
-      case BLZ_GELOESCHT: return "BLZ_GELOESCHT";
-      case INVALID_BLZ_FILE: return "INVALID_BLZ_FILE";
-      case LIBRARY_IS_NOT_THREAD_SAFE: return "LIBRARY_IS_NOT_THREAD_SAFE";
-      case FATAL_ERROR: return "FATAL_ERROR";
-      case INVALID_KTO_LENGTH: return "INVALID_KTO_LENGTH";
-      case FILE_WRITE_ERROR: return "FILE_WRITE_ERROR";
-      case FILE_READ_ERROR: return "FILE_READ_ERROR";
-      case ERROR_MALLOC: return "ERROR_MALLOC";
-      case NO_BLZ_FILE: return "NO_BLZ_FILE";
-      case INVALID_LUT_FILE: return "INVALID_LUT_FILE";
-      case NO_LUT_FILE: return "NO_LUT_FILE";
-      case INVALID_BLZ_LENGTH: return "INVALID_BLZ_LENGTH";
-      case INVALID_BLZ: return "INVALID_BLZ";
-      case INVALID_KTO: return "INVALID_KTO";
-      case NOT_IMPLEMENTED: return "NOT_IMPLEMENTED";
-      case NOT_DEFINED: return "NOT_DEFINED";
-      case FALSE: return "FALSE";
-      case OK: return "OK";
-      case EE: return "EE";
-      case OK_NO_CHK: return "OK_NO_CHK";
-      case OK_TEST_BLZ_USED: return "OK_TEST_BLZ_USED";
-      case LUT2_VALID: return "LUT2_VALID";
-      case LUT2_NO_VALID_DATE: return "LUT2_NO_VALID_DATE";
-      case LUT1_SET_LOADED: return "LUT1_SET_LOADED";
-      case LUT1_FILE_GENERATED: return "LUT1_FILE_GENERATED";
-      case DTA_FILE_WITH_WARNINGS: return "DTA_FILE_WITH_WARNINGS";
-      case LUT_V2_FILE_GENERATED: return "LUT_V2_FILE_GENERATED";
-      case KTO_CHECK_VALUE_REPLACED: return "KTO_CHECK_VALUE_REPLACED";
-      case OK_UNTERKONTO_POSSIBLE: return "OK_UNTERKONTO_POSSIBLE";
-      case OK_UNTERKONTO_GIVEN: return "OK_UNTERKONTO_GIVEN";
-      case OK_SLOT_CNT_MIN_USED: return "OK_SLOT_CNT_MIN_USED";
-      case SOME_KEYS_NOT_FOUND: return "SOME_KEYS_NOT_FOUND";
-      case LUT2_KTO_NOT_CHECKED: return "LUT2_KTO_NOT_CHECKED";
-      case LUT2_OK_WITHOUT_IBAN_RULES: return "LUT2_OK_WITHOUT_IBAN_RULES";
-      case OK_NACHFOLGE_BLZ_USED: return "OK_NACHFOLGE_BLZ_USED";
-      case OK_KTO_REPLACED: return "OK_KTO_REPLACED";
-      case OK_BLZ_REPLACED: return "OK_BLZ_REPLACED";
-      case OK_BLZ_KTO_REPLACED: return "OK_BLZ_KTO_REPLACED";
-      case OK_IBAN_WITHOUT_KC_TEST: return "OK_IBAN_WITHOUT_KC_TEST";
-      case OK_INVALID_FOR_IBAN: return "OK_INVALID_FOR_IBAN";
-      case OK_HYPO_REQUIRES_KTO: return "OK_HYPO_REQUIRES_KTO";
-      case OK_KTO_REPLACED_NO_PZ: return "OK_KTO_REPLACED_NO_PZ";
-      case OK_UNTERKONTO_ATTACHED: return "OK_UNTERKONTO_ATTACHED";
-      case OK_SHORT_BIC_USED: return "OK_SHORT_BIC_USED";
-      default: return "UNDEFINED_RETVAL";
-   }
-}
-
-
 /* Funktion get_lut_info_b() +ßßß1 */
 /*
  * ######################################################################
@@ -21790,7 +20962,7 @@ DLL_EXPORT int get_lut_info(char **info,char *lut_name)
 
    if((retval=get_lut_info2(lut_name,NULL,&prolog,&ptr,NULL))!=OK)RETURN(retval);
    if(ptr){
-      *info=malloc(strlen(ptr)+1);
+      *info=(char *)malloc(strlen(ptr)+1);
       strcpy(*info,ptr);   /* Infozeile kopieren, damit prolog freigegeben werden kann */
    }
    else
@@ -21884,16 +21056,16 @@ DLL_EXPORT const char *get_kto_check_version_x(int mode)
       case 4:                              /* Datum der Pr¸fziffermethode */
 #if 1
          if(pz_aenderungen_aktivieren)
-            return "03.03.2014";
+            return "09.06.2014";
          else
-            return "09.12.2013 (Aenderungen vom 03.03.2014 enthalten aber noch nicht aktiviert)";
+            return "09.12.2013 (Aenderungen vom 09.06.2014 enthalten aber noch nicht aktiviert)";
 #else
-         return "03.03.2014";
+         return "09.06.2014";
 #endif
       case 5:
         return "03.03.2014";
       case 6:
-        return "3. M‰rz 2014";            /* Klartext-Datum der Bibliotheksversion */
+        return "2. Juni 2014";            /* Klartext-Datum der Bibliotheksversion */
       case 7:
         return "final";            /* Versions-Typ der Bibliotheksversion (development, beta, final) */
    }
@@ -22134,6 +21306,8 @@ DLL_EXPORT int dump_lutfile(char *outputname,UINT4 *required)
  * # datei erwartet; bei einem set-Parameter von 0 eine Klartextdatei        #
  * # (Bundesbankdatei).                                                      #
  * #                                                                         #
+ * # Update 2014: die IBAN-Regeln werden jetzt auch ausgegeben.              #
+ * #                                                                         #
  * # Copyright (C) 2007,2009 Michael Plugge <m.plugge@hs-mannheim.de>        #
  * ###########################################################################
  */
@@ -22142,7 +21316,7 @@ DLL_EXPORT int rebuild_blzfile(char *inputname,char *outputname,UINT4 set)
 {
    char pbuf[256],*b,pan_buf[8],nr_buf[8],tmpfile[16];
    char  **p_name,**p_name_kurz,**p_ort,**p_bic,*p_aenderung,*p_loeschung;
-   int i,j,ret;
+   int i,j,ret,regel;
    int cnt,*p_nachfolge_blz,id,p_pz,*p_nr,*p_plz,*p_pan;
    UINT4 lut_set[30];
    FILE *out;
@@ -22164,24 +21338,26 @@ DLL_EXPORT int rebuild_blzfile(char *inputname,char *outputname,UINT4 set)
       lut_set[i+3]=0;
       if(i==100000)return FATAL_ERROR; /* keine mˆgliche Ausgabedatei gefunden */
       ret=generate_lut2(inputname,tmpfile,"Testdatei fuer LUT2",NULL,lut_set,20,3,0);
-      printf("generate_lut2: %s\n",kto_check_retval2txt_short(ret));
-      if(ret!=OK){
+      if(ret<=0){
          unlink(tmpfile);
          RETURN(ret);
       }
       ret=kto_check_init_p(tmpfile,9,0,0);
-      printf("init(): %s\n",kto_check_retval2txt_short(ret));
       unlink(tmpfile);
-      if(ret!=OK)RETURN(ret);
+      if(ret<=0)RETURN(ret);
    }
    else  /* set-Parameter 1 oder 2: LUT-Datei als Eingabedatei */
-      if((ret=kto_check_init_p(inputname,9,set,0))!=OK)RETURN(ret);
+      if(set<0)   /* set darf nur 0, 1 oder 2 sein; 0 wurde schon behandelt */
+         set=1;
+      else if(set>2)
+         set=2;
+      if((ret=kto_check_init_p(inputname,9,set,0))<=0)RETURN(ret);
 
    if(!(out=fopen(outputname,"w"))){
       PRINT_VERBOSE_DEBUG_FILE("fopen");
       return FILE_WRITE_ERROR;
    }
-   for(i=0;i<lut2_cnt_hs;i++){
+   for(i=regel=0;i<lut2_cnt_hs;i++){
       sprintf(b=pbuf,"%d",blz[i]);
       lut_multiple(pbuf,&cnt,NULL,&p_name,&p_name_kurz,&p_plz,&p_ort,&p_pan,&p_bic,
             &p_pz,&p_nr,&p_aenderung,&p_loeschung,&p_nachfolge_blz,&id,NULL,NULL);
@@ -22193,9 +21369,15 @@ DLL_EXPORT int rebuild_blzfile(char *inputname,char *outputname,UINT4 set)
          sprintf(nr_buf,"%06d",*p_nr);
       else
          *nr_buf=0;
-      fprintf(out,"%8s1%-58s%05d%-35s%-27s%5s%-11s%X%d%6s%c%c%08d\n",
+      fprintf(out,"%8s1%-58s%05d%-35s%-27s%5s%-11s%X%d%6s%c%c%08d",
             pbuf,*p_name,*p_plz,*p_ort,*p_name_kurz,pan_buf,*p_bic,p_pz/10,p_pz%10,
             nr_buf,*p_aenderung,*p_loeschung,*p_nachfolge_blz);
+      if(iban_regel){
+         regel=lut_iban_regel(pbuf,0,NULL);
+         fprintf(out,"%06d\n",regel);
+      }
+      else
+         fputc('\n',out);
       for(j=1;j<cnt;j++){
          if(p_pan[j])
             sprintf(pan_buf,"%05d",p_pan[j]);
@@ -22205,9 +21387,13 @@ DLL_EXPORT int rebuild_blzfile(char *inputname,char *outputname,UINT4 set)
             sprintf(nr_buf,"%06d",p_nr[j]);
          else
             *nr_buf=0;
-         fprintf(out,"%8s2%-58s%05d%-35s%-27s%5s%-11s%X%d%6s%c%c%08d\n",
+         fprintf(out,"%8s2%-58s%05d%-35s%-27s%5s%-11s%X%d%6s%c%c%08d",
                pbuf,p_name[j],p_plz[j],p_ort[j],p_name_kurz[j],pan_buf,p_bic[j],
                p_pz/10,p_pz%10,nr_buf,p_aenderung[j],p_loeschung[j],p_nachfolge_blz[j]);
+         if(iban_regel)
+            fprintf(out,"%06d\n",regel);
+         else
+            fputc('\n',out);
       }               
    }
    return OK;
@@ -22416,6 +21602,8 @@ DLL_EXPORT char *iban_bic_gen1(char *blz,char *kto,const char **bicp,int *retval
 {
    return iban_bic_gen(blz,kto,bicp,NULL,NULL,retval);
 }
+
+
 
 DLL_EXPORT char *iban_bic_gen(char *blz,char *kto,const char **bicp,char *blz2,char *kto2,int *retval)
 {
@@ -22654,7 +21842,7 @@ DLL_EXPORT char *iban_bic_gen(char *blz,char *kto,const char **bicp,char *blz2,c
       if(j>0 && !(j%4))*dptr++=' ';
    }
    *dptr=0;
-   ptr=malloc(64);
+   ptr=(char *)malloc(64);
    strcpy(ptr,check);
    if(retval)*retval=ret_regel;
    return ptr;
@@ -23523,236 +22711,236 @@ static int get_sortc(char **a,int enc)
       case 'Z': base='z'; break;
 
                 /* DOS CP-850 und Kollisionen mit ISO-8859-1 */
-      case 0xa0: base='a'; accent=1; break;    /* CP-850: † a acute */
-      case 0x83: base='a'; accent=2; break;    /* CP-850: É a circ  */
-      case 0x85: base='a'; accent=3; break;    /* CP-850: Ö a grave */
-      case 0xc6: base='a'; accent=4; break;    /* CP-850: ∆ a tilde */
-      case 0x84: base='a'; accent=5; break;    /* CP-850: Ñ a uml   */
-      case 0xb5: base='a'; accent=1; break;    /* CP-850: µ A acute */
-      case 0xb6: base='a'; accent=2; break;    /* CP-850: ∂ A circ  */
-      case 0xb7: base='a'; accent=3; break;    /* CP-850: ∑ A grave */
-      case 0xc7: base='a'; accent=4; break;    /* CP-850: « A tilde */
-      case 0x8e: base='a'; accent=5; break;    /* CP-850: é A uml   */
-      case 0x82: base='e'; accent=1; break;    /* CP-850: Ç e acute */
-      case 0x88: base='e'; accent=2; break;    /* CP-850: à e circ  */
-      case 0x8a: base='e'; accent=3; break;    /* CP-850: ä e grave */
-      case 0x89: base='e'; accent=5; break;    /* CP-850: â e uml   */
-      case 0x90: base='e'; accent=1; break;    /* CP-850: ê E acute */
+      case 0xa0: base='a'; accent=1; break;    /* CP-850:  a acute */
+      case 0x83: base='a'; accent=2; break;    /* CP-850:  a circ  */
+      case 0x85: base='a'; accent=3; break;    /* CP-850:  a grave */
+      case 0xc6: base='a'; accent=4; break;    /* CP-850:  a tilde */
+      case 0x84: base='a'; accent=5; break;    /* CP-850:  a uml   */
+      case 0xb5: base='a'; accent=1; break;    /* CP-850:  A acute */
+      case 0xb6: base='a'; accent=2; break;    /* CP-850:  A circ  */
+      case 0xb7: base='a'; accent=3; break;    /* CP-850:  A grave */
+      case 0xc7: base='a'; accent=4; break;    /* CP-850:  A tilde */
+      case 0x8e: base='a'; accent=5; break;    /* CP-850:  A uml   */
+      case 0x82: base='e'; accent=1; break;    /* CP-850:  e acute */
+      case 0x88: base='e'; accent=2; break;    /* CP-850:  e circ  */
+      case 0x8a: base='e'; accent=3; break;    /* CP-850:  e grave */
+      case 0x89: base='e'; accent=5; break;    /* CP-850:  e uml   */
+      case 0x90: base='e'; accent=1; break;    /* CP-850:  E acute */
       case 0xd2:
          if(enc==4){
-            base='e'; accent=2; break;         /* CP-850: “ E circ  */
+            base='e'; accent=2; break;         /* CP-850:  E circ  */
          }
          else{
-            base='o'; accent=3; break;         /* ISO-8859-1: “ O grave */
+            base='o'; accent=3; break;         /* ISO-8859-1: O grave */
          }
       case 0xd4:
          if(enc==4){
-            base='e'; accent=3; break;         /* CP-850: ‘ E grave */
+            base='e'; accent=3; break;         /* CP-850: E grave */
          }
          else{
-            base='o'; accent=2; break;         /* ISO-8859-1: ‘ O circ  */
+            base='o'; accent=2; break;         /* ISO-8859-1: O circ  */
          }
       case 0xd3:
          if(enc==4){
-            base='e'; accent=5; break;         /* CP-850: ” E uml   */
+            base='e'; accent=5; break;         /* CP-850: E uml   */
          }
          else{
-            base='o'; accent=1; break;         /* ISO-8859-1: ” O acute */
+            base='o'; accent=1; break;         /* ISO-8859-1: O acute */
          }
-      case 0xa1: base='i'; accent=1; break;    /* CP-850: ° i acute */
-      case 0x8c: base='i'; accent=2; break;    /* CP-850: å i circ  */
-      case 0x8d: base='i'; accent=3; break;    /* CP-850: ç i grave */
-      case 0x8b: base='i'; accent=5; break;    /* CP-850: ã i uml   */
+      case 0xa1: base='i'; accent=1; break;    /* CP-850: i acute */
+      case 0x8c: base='i'; accent=2; break;    /* CP-850: i circ  */
+      case 0x8d: base='i'; accent=3; break;    /* CP-850: i grave */
+      case 0x8b: base='i'; accent=5; break;    /* CP-850: i uml   */
       case 0xd6:
          if(enc==4){
-            base='i'; accent=1; break;         /* CP-850: ÷ I acute */
+            base='i'; accent=1; break;         /* CP-850: I acute */
          }
          else{
-            base='o'; accent=5; break;         /* ISO-8859-1: ÷ O uml   */
+            base='o'; accent=5; break;         /* ISO-8859-1: O uml   */
          }
-      case 0xd7: base='i'; accent=2; break;    /* CP-850: ◊ I circ  */
-      case 0xde: base='i'; accent=3; break;    /* CP-850: ﬁ I grave */
-      case 0xd8: base='i'; accent=5; break;    /* CP-850: ÿ I uml   */
-      case 0xa4: base='n'; accent=4; break;    /* CP-850: § n tilde */
-      case 0xa5: base='n'; accent=4; break;    /* CP-850: • N tilde */
-      case 0xa2: base='o'; accent=1; break;    /* CP-850: ¢ o acute */
-      case 0x93: base='o'; accent=2; break;    /* CP-850: ì o circ  */
-      case 0x95: base='o'; accent=3; break;    /* CP-850: ï o grave */
+      case 0xd7: base='i'; accent=2; break;    /* CP-850: I circ  */
+      case 0xde: base='i'; accent=3; break;    /* CP-850: I grave */
+      case 0xd8: base='i'; accent=5; break;    /* CP-850: I uml   */
+      case 0xa4: base='n'; accent=4; break;    /* CP-850: n tilde */
+      case 0xa5: base='n'; accent=4; break;    /* CP-850: N tilde */
+      case 0xa2: base='o'; accent=1; break;    /* CP-850: o acute */
+      case 0x93: base='o'; accent=2; break;    /* CP-850: o circ  */
+      case 0x95: base='o'; accent=3; break;    /* CP-850: o grave */
       case 0xe4:
          if(enc==4){
-            base='o'; accent=4; break;         /* CP-850: ‰ o tilde */
+            base='o'; accent=4; break;         /* CP-850: o tilde */
          }
          else{
-            base='a'; accent=5; break;         /* ISO-8859-1: ‰ a uml   */
+            base='a'; accent=5; break;         /* ISO-8859-1: a uml   */
          }
-      case 0x94: base='o'; accent=5; break;    /* CP-850: î o uml   */
+      case 0x94: base='o'; accent=5; break;    /* CP-850: î uml   */
       case 0xe0:
          if(enc==4){
-            base='o'; accent=1; break;         /* CP-850: ‡ O acute */
+            base='o'; accent=1; break;         /* CP-850: O acute */
          }
          else{
-            base='a'; accent=3; break;         /* ISO-8859-1: ‡ a grave */
+            base='a'; accent=3; break;         /* ISO-8859-1: a grave */
          }
       case 0xe2:
          if(enc==4){
-            base='o'; accent=2; break;         /* CP-850: ‚ O circ  */
+            base='o'; accent=2; break;         /* CP-850: O circ  */
          }
          else{
-            base='a'; accent=2; break;         /* ISO-8859-1: ‚ a circ  */
+            base='a'; accent=2; break;         /* ISO-8859-1: a circ  */
          }
       case 0xe3:
          if(enc==4){
-            base='o'; accent=3; break;         /* CP-850: „ O grave */
+            base='o'; accent=3; break;         /* CP-850: O grave */
          }
          else{
-            base='a'; accent=4; break;         /* ISO-8859-1: „ a tilde */
+            base='a'; accent=4; break;         /* ISO-8859-1: a tilde */
          }
-      case 0xe5: base='o'; accent=4; break;    /* CP-850: Â O tilde */
-      case 0x99: base='o'; accent=5; break;    /* CP-850: ô O uml   */
-      case 0xa3: base='u'; accent=1; break;    /* CP-850: £ u acute */
-      case 0x96: base='u'; accent=2; break;    /* CP-850: ñ u circ  */
-      case 0x97: base='u'; accent=3; break;    /* CP-850: ó u grave */
-      case 0x81: base='u'; accent=5; break;    /* CP-850: Å u uml   */
+      case 0xe5: base='o'; accent=4; break;    /* CP-850: O tilde */
+      case 0x99: base='o'; accent=5; break;    /* CP-850: O uml   */
+      case 0xa3: base='u'; accent=1; break;    /* CP-850: u acute */
+      case 0x96: base='u'; accent=2; break;    /* CP-850: u circ  */
+      case 0x97: base='u'; accent=3; break;    /* CP-850: u grave */
+      case 0x81: base='u'; accent=5; break;    /* CP-850: u uml   */
       case 0xe9:
          if(enc==4){
-            base='u'; accent=1; break;         /* CP-850: È U acute */
+            base='u'; accent=1; break;         /* CP-850: U acute */
          }
          else{
-            base='e'; accent=1; break;         /* ISO-8859-1: È e acute */
+            base='e'; accent=1; break;         /* ISO-8859-1: e acute */
          }
       case 0xea:
          if(enc==4){
-            base='u'; accent=2; break;         /* CP-850: Í U circ  */
+            base='u'; accent=2; break;         /* CP-850: U circ  */
          }
          else{
-            base='e'; accent=2; break;         /* ISO-8859-1: Í e circ  */
+            base='e'; accent=2; break;         /* ISO-8859-1: e circ  */
          }
       case 0xeb:
          if(enc==4){
-            base='u'; accent=3; break;         /* CP-850: Î U grave */
+            base='u'; accent=3; break;         /* CP-850: U grave */
          }
          else{
-            base='e'; accent=5; break;         /* ISO-8859-1: Î e uml   */
+            base='e'; accent=5; break;         /* ISO-8859-1: e uml   */
          }
-      case 0x9a: base='u'; accent=5; break;    /* CP-850: ö U uml   */
+      case 0x9a: base='u'; accent=5; break;    /* CP-850: U uml   */
       case 0xec:
          if(enc==4){
-            base='y'; accent=1; break;         /* CP-850: Ï y acute */
+            base='y'; accent=1; break;         /* CP-850: y acute */
          }
          else{
-            base='i'; accent=3; break;         /* ISO-8859-1: Ï i grave */
+            base='i'; accent=3; break;         /* ISO-8859-1: i grave */
          }
       case 0xed:
          if(enc==4){
-            base='y'; accent=1; break;         /* CP-850: Ì Y acute */
+            base='y'; accent=1; break;         /* CP-850: Y acute */
          }
          else{
-            base='i'; accent=1; break;         /* ISO-8859-1: Ì i acute */
+            base='i'; accent=1; break;         /* ISO-8859-1: i acute */
          }
-      case 0x98: base='y'; accent=5; break;    /* CP-850: ò y uml   */
+      case 0x98: base='y'; accent=5; break;    /* CP-850: y uml   */
       case 0xe1:
          if(enc==4){
-            base='s'; accent=1; break;         /* CP-850: · s szlig */
+            base='s'; accent=1; break;         /* CP-850: s szlig */
          }
          else{
-            base='a'; accent=1; break;         /* ISO-8859-1: · a acute */
+            base='a'; accent=1; break;         /* ISO-8859-1: a acute */
          }
 
 
                  /* ISO-8859-1 */
-      case 0xc1: base='a'; accent=1; break;    /* ISO-8859-1: ¡ A acute */
-      case 0xc2: base='a'; accent=2; break;    /* ISO-8859-1: ¬ A circ  */
-      case 0xc0: base='a'; accent=3; break;    /* ISO-8859-1: ¿ A grave */
-      case 0xc4: base='a'; accent=5; break;    /* ISO-8859-1: ƒ A uml   */
-      case 0xe8: base='e'; accent=3; break;    /* ISO-8859-1: Ë e grave */
-      case 0xc9: base='e'; accent=1; break;    /* ISO-8859-1: … E acute */
-      case 0xca: base='e'; accent=2; break;    /* ISO-8859-1:   E circ  */
-      case 0xc8: base='e'; accent=3; break;    /* ISO-8859-1: » E grave */
-      case 0xcb: base='e'; accent=5; break;    /* ISO-8859-1: À E uml   */
-      case 0xee: base='i'; accent=2; break;    /* ISO-8859-1: Ó i circ  */
-      case 0xef: base='i'; accent=5; break;    /* ISO-8859-1: Ô i uml   */
-      case 0xcd: base='i'; accent=1; break;    /* ISO-8859-1: Õ I acute */
-      case 0xce: base='i'; accent=2; break;    /* ISO-8859-1: Œ I circ  */
-      case 0xcc: base='i'; accent=3; break;    /* ISO-8859-1: Ã I grave */
-      case 0xcf: base='i'; accent=5; break;    /* ISO-8859-1: œ I uml   */
-      case 0xf1: base='n'; accent=4; break;    /* ISO-8859-1: Ò n tilde */
-      case 0xd1: base='n'; accent=4; break;    /* ISO-8859-1: — N tilde */
-      case 0xf3: base='o'; accent=1; break;    /* ISO-8859-1: Û o acute */
-      case 0xf4: base='o'; accent=2; break;    /* ISO-8859-1: Ù o circ  */
-      case 0xf2: base='o'; accent=3; break;    /* ISO-8859-1: Ú o grave */
-      case 0xf5: base='o'; accent=4; break;    /* ISO-8859-1: ı o tilde */
-      case 0xf6: base='o'; accent=5; break;    /* ISO-8859-1: ˆ o uml   */
-      case 0xd5: base='o'; accent=4; break;    /* ISO-8859-1: ’ O tilde */
-      case 0xfa: base='u'; accent=1; break;    /* ISO-8859-1: ˙ u acute */
-      case 0xfb: base='u'; accent=2; break;    /* ISO-8859-1: ˚ u circ  */
-      case 0xf9: base='u'; accent=3; break;    /* ISO-8859-1: ˘ u grave */
-      case 0xfc: base='u'; accent=5; break;    /* ISO-8859-1: ¸ u uml   */
-      case 0xda: base='u'; accent=1; break;    /* ISO-8859-1: ⁄ U acute */
-      case 0xdb: base='u'; accent=2; break;    /* ISO-8859-1: € U circ  */
-      case 0xd9: base='u'; accent=3; break;    /* ISO-8859-1: Ÿ U grave */
-      case 0xdc: base='u'; accent=5; break;    /* ISO-8859-1: ‹ U uml   */
-      case 0xfd: base='y'; accent=1; break;    /* ISO-8859-1: ˝ Y acute */
-      case 0xdd: base='y'; accent=1; break;    /* ISO-8859-1: › Y acute */
-      case 0xff: base='y'; accent=5; break;    /* ISO-8859-1: ˇ y uml   */
-      case 0xdf: base='s'; accent=1; break;    /* ISO-8859-1: ﬂ s szlig */
+      case 0xc1: base='a'; accent=1; break;    /* ISO-8859-1: A acute */
+      case 0xc2: base='a'; accent=2; break;    /* ISO-8859-1: A circ  */
+      case 0xc0: base='a'; accent=3; break;    /* ISO-8859-1: A grave */
+      case 0xc4: base='a'; accent=5; break;    /* ISO-8859-1: A uml   */
+      case 0xe8: base='e'; accent=3; break;    /* ISO-8859-1: e grave */
+      case 0xc9: base='e'; accent=1; break;    /* ISO-8859-1: E acute */
+      case 0xca: base='e'; accent=2; break;    /* ISO-8859-1: E circ  */
+      case 0xc8: base='e'; accent=3; break;    /* ISO-8859-1: E grave */
+      case 0xcb: base='e'; accent=5; break;    /* ISO-8859-1: E uml   */
+      case 0xee: base='i'; accent=2; break;    /* ISO-8859-1: i circ  */
+      case 0xef: base='i'; accent=5; break;    /* ISO-8859-1: i uml   */
+      case 0xcd: base='i'; accent=1; break;    /* ISO-8859-1: I acute */
+      case 0xce: base='i'; accent=2; break;    /* ISO-8859-1: I circ  */
+      case 0xcc: base='i'; accent=3; break;    /* ISO-8859-1: I grave */
+      case 0xcf: base='i'; accent=5; break;    /* ISO-8859-1: I uml   */
+      case 0xf1: base='n'; accent=4; break;    /* ISO-8859-1: n tilde */
+      case 0xd1: base='n'; accent=4; break;    /* ISO-8859-1: N tilde */
+      case 0xf3: base='o'; accent=1; break;    /* ISO-8859-1: o acute */
+      case 0xf4: base='o'; accent=2; break;    /* ISO-8859-1: o circ  */
+      case 0xf2: base='o'; accent=3; break;    /* ISO-8859-1: o grave */
+      case 0xf5: base='o'; accent=4; break;    /* ISO-8859-1: o tilde */
+      case 0xf6: base='o'; accent=5; break;    /* ISO-8859-1: o uml   */
+      case 0xd5: base='o'; accent=4; break;    /* ISO-8859-1: O tilde */
+      case 0xfa: base='u'; accent=1; break;    /* ISO-8859-1: u acute */
+      case 0xfb: base='u'; accent=2; break;    /* ISO-8859-1: u circ  */
+      case 0xf9: base='u'; accent=3; break;    /* ISO-8859-1: u grave */
+      case 0xfc: base='u'; accent=5; break;    /* ISO-8859-1: u uml   */
+      case 0xda: base='u'; accent=1; break;    /* ISO-8859-1: U acute */
+      case 0xdb: base='u'; accent=2; break;    /* ISO-8859-1: U circ  */
+      case 0xd9: base='u'; accent=3; break;    /* ISO-8859-1: U grave */
+      case 0xdc: base='u'; accent=5; break;    /* ISO-8859-1: U uml   */
+      case 0xfd: base='y'; accent=1; break;    /* ISO-8859-1: Y acute */
+      case 0xdd: base='y'; accent=1; break;    /* ISO-8859-1: Y acute */
+      case 0xff: base='y'; accent=5; break;    /* ISO-8859-1: y uml   */
+      case 0xdf: base='s'; accent=1; break;    /* ISO-8859-1: s szlig */
 
 
       case 0xc3:  /* UTF-8 Zeichen */
                  switch(*ptr){
 
                        /* UTF8-Kodierung (immer mit Pr‰fix 0xc3): */
-                    case 0xa1: ptr++; base='a'; accent=1; break;    /* UTF-8: √° a acute  */
-                    case 0xa2: ptr++; base='a'; accent=2; break;    /* UTF-8: √¢ a circ   */
-                    case 0xa0: ptr++; base='a'; accent=3; break;    /* UTF-8: √† a grave  */
-                    case 0xa3: ptr++; base='a'; accent=4; break;    /* UTF-8: √£ a tilde  */
-                    case 0xa4: ptr++; base='a'; accent=5; break;    /* UTF-8: √§ a uml    */
-                    case 0X81: ptr++; base='a'; accent=1; break;    /* UTF-8: √Å A acute  */
-                    case 0X82: ptr++; base='a'; accent=2; break;    /* UTF-8: √Ç A circ   */
-                    case 0X80: ptr++; base='a'; accent=3; break;    /* UTF-8: √Ä A grave  */
-                    case 0X83: ptr++; base='a'; accent=4; break;    /* UTF-8: √É A tilde  */
-                    case 0X84: ptr++; base='a'; accent=5; break;    /* UTF-8: √Ñ A uml    */
-                    case 0xa9: ptr++; base='e'; accent=1; break;    /* UTF-8: √© e acute  */
-                    case 0xaa: ptr++; base='e'; accent=2; break;    /* UTF-8: √™ e circ   */
-                    case 0xa8: ptr++; base='e'; accent=3; break;    /* UTF-8: √® e grave  */
-                    case 0xab: ptr++; base='e'; accent=5; break;    /* UTF-8: √´ e uml    */
-                    case 0x89: ptr++; base='e'; accent=1; break;    /* UTF-8: √â E acute  */
-                    case 0x8a: ptr++; base='e'; accent=2; break;    /* UTF-8: √ä E circ   */
-                    case 0x88: ptr++; base='e'; accent=3; break;    /* UTF-8: √à E grave  */
-                    case 0x8b: ptr++; base='e'; accent=5; break;    /* UTF-8: √ã E uml    */
-                    case 0xad: ptr++; base='i'; accent=1; break;    /* UTF-8: √≠ i acute  */
-                    case 0xae: ptr++; base='i'; accent=2; break;    /* UTF-8: √Æ i circ   */
-                    case 0xac: ptr++; base='i'; accent=3; break;    /* UTF-8: √¨ i grave  */
-                    case 0xaf: ptr++; base='i'; accent=5; break;    /* UTF-8: √Ø i uml    */
-                    case 0x8d: ptr++; base='i'; accent=1; break;    /* UTF-8: √ç I acute  */
-                    case 0x8e: ptr++; base='i'; accent=2; break;    /* UTF-8: √é I circ   */
-                    case 0x8c: ptr++; base='i'; accent=3; break;    /* UTF-8: √å I grave  */
-                    case 0x8f: ptr++; base='i'; accent=5; break;    /* UTF-8: √è I uml    */
-                    case 0xb1: ptr++; base='n'; accent=4; break;    /* UTF-8: √± n tilde  */
-                    case 0x91: ptr++; base='n'; accent=4; break;    /* UTF-8: √ë N tilde  */
-                    case 0xb3: ptr++; base='o'; accent=1; break;    /* UTF-8: √≥ o acute  */
-                    case 0xb4: ptr++; base='o'; accent=2; break;    /* UTF-8: √¥ o circ   */
-                    case 0xb2: ptr++; base='o'; accent=3; break;    /* UTF-8: √≤ o grave  */
-                    case 0xb5: ptr++; base='o'; accent=4; break;    /* UTF-8: √µ o tilde  */
-                    case 0xb6: ptr++; base='o'; accent=5; break;    /* UTF-8: √∂ o uml    */
-                    case 0x93: ptr++; base='o'; accent=1; break;    /* UTF-8: √ì O acute  */
-                    case 0x94: ptr++; base='o'; accent=2; break;    /* UTF-8: √î O circ   */
-                    case 0x92: ptr++; base='o'; accent=3; break;    /* UTF-8: √í O grave  */
-                    case 0x95: ptr++; base='o'; accent=4; break;    /* UTF-8: √ï O tilde  */
-                    case 0x96: ptr++; base='o'; accent=5; break;    /* UTF-8: √ñ O uml    */
-                    case 0xba: ptr++; base='u'; accent=1; break;    /* UTF-8: √∫ u acute  */
-                    case 0xbb: ptr++; base='u'; accent=2; break;    /* UTF-8: √ª u circ   */
-                    case 0xb9: ptr++; base='u'; accent=3; break;    /* UTF-8: √π u grave  */
-                    case 0xbc: ptr++; base='u'; accent=5; break;    /* UTF-8: √º u uml    */
-                    case 0x9a: ptr++; base='u'; accent=1; break;    /* UTF-8: √ö U acute  */
-                    case 0x9b: ptr++; base='u'; accent=2; break;    /* UTF-8: √õ U circ   */
-                    case 0x99: ptr++; base='u'; accent=3; break;    /* UTF-8: √ô U grave  */
-                    case 0x9c: ptr++; base='u'; accent=5; break;    /* UTF-8: √ú U uml    */
-                    case 0xbd: ptr++; base='y'; accent=1; break;    /* UTF-8: √Ω y acute  */
-                    case 0x9d: ptr++; base='y'; accent=1; break;    /* UTF-8: √ù Y acute  */
-                    case 0xbf: ptr++; base='y'; accent=5; break;    /* UTF-8: √ø y uml    */
-                    case 0x9f: ptr++; base='s'; accent=1; break;    /* UTF-8: √ü szlig    */
+                    case 0xa1: ptr++; base='a'; accent=1; break;    /* UTF-8: a acute  */
+                    case 0xa2: ptr++; base='a'; accent=2; break;    /* UTF-8: a circ   */
+                    case 0xa0: ptr++; base='a'; accent=3; break;    /* UTF-8: a grave  */
+                    case 0xa3: ptr++; base='a'; accent=4; break;    /* UTF-8: a tilde  */
+                    case 0xa4: ptr++; base='a'; accent=5; break;    /* UTF-8: a uml    */
+                    case 0X81: ptr++; base='a'; accent=1; break;    /* UTF-8: A acute  */
+                    case 0X82: ptr++; base='a'; accent=2; break;    /* UTF-8: A circ   */
+                    case 0X80: ptr++; base='a'; accent=3; break;    /* UTF-8: A grave  */
+                    case 0X83: ptr++; base='a'; accent=4; break;    /* UTF-8: A tilde  */
+                    case 0X84: ptr++; base='a'; accent=5; break;    /* UTF-8: A uml    */
+                    case 0xa9: ptr++; base='e'; accent=1; break;    /* UTF-8: e acute  */
+                    case 0xaa: ptr++; base='e'; accent=2; break;    /* UTF-8: e circ   */
+                    case 0xa8: ptr++; base='e'; accent=3; break;    /* UTF-8: e grave  */
+                    case 0xab: ptr++; base='e'; accent=5; break;    /* UTF-8: e uml    */
+                    case 0x89: ptr++; base='e'; accent=1; break;    /* UTF-8: E acute  */
+                    case 0x8a: ptr++; base='e'; accent=2; break;    /* UTF-8: E circ   */
+                    case 0x88: ptr++; base='e'; accent=3; break;    /* UTF-8: E grave  */
+                    case 0x8b: ptr++; base='e'; accent=5; break;    /* UTF-8: E uml    */
+                    case 0xad: ptr++; base='i'; accent=1; break;    /* UTF-8: i acute  */
+                    case 0xae: ptr++; base='i'; accent=2; break;    /* UTF-8: i circ   */
+                    case 0xac: ptr++; base='i'; accent=3; break;    /* UTF-8: i grave  */
+                    case 0xaf: ptr++; base='i'; accent=5; break;    /* UTF-8: i uml    */
+                    case 0x8d: ptr++; base='i'; accent=1; break;    /* UTF-8: I acute  */
+                    case 0x8e: ptr++; base='i'; accent=2; break;    /* UTF-8: I circ   */
+                    case 0x8c: ptr++; base='i'; accent=3; break;    /* UTF-8: I grave  */
+                    case 0x8f: ptr++; base='i'; accent=5; break;    /* UTF-8: I uml    */
+                    case 0xb1: ptr++; base='n'; accent=4; break;    /* UTF-8: n tilde  */
+                    case 0x91: ptr++; base='n'; accent=4; break;    /* UTF-8: N tilde  */
+                    case 0xb3: ptr++; base='o'; accent=1; break;    /* UTF-8: o acute  */
+                    case 0xb4: ptr++; base='o'; accent=2; break;    /* UTF-8: o circ   */
+                    case 0xb2: ptr++; base='o'; accent=3; break;    /* UTF-8: o grave  */
+                    case 0xb5: ptr++; base='o'; accent=4; break;    /* UTF-8: o tilde  */
+                    case 0xb6: ptr++; base='o'; accent=5; break;    /* UTF-8: o uml    */
+                    case 0x93: ptr++; base='o'; accent=1; break;    /* UTF-8: O acute  */
+                    case 0x94: ptr++; base='o'; accent=2; break;    /* UTF-8: O circ   */
+                    case 0x92: ptr++; base='o'; accent=3; break;    /* UTF-8: O grave  */
+                    case 0x95: ptr++; base='o'; accent=4; break;    /* UTF-8: O tilde  */
+                    case 0x96: ptr++; base='o'; accent=5; break;    /* UTF-8: O uml    */
+                    case 0xba: ptr++; base='u'; accent=1; break;    /* UTF-8: u acute  */
+                    case 0xbb: ptr++; base='u'; accent=2; break;    /* UTF-8: u circ   */
+                    case 0xb9: ptr++; base='u'; accent=3; break;    /* UTF-8: u grave  */
+                    case 0xbc: ptr++; base='u'; accent=5; break;    /* UTF-8: u uml    */
+                    case 0x9a: ptr++; base='u'; accent=1; break;    /* UTF-8: U acute  */
+                    case 0x9b: ptr++; base='u'; accent=2; break;    /* UTF-8: U circ   */
+                    case 0x99: ptr++; base='u'; accent=3; break;    /* UTF-8: U grave  */
+                    case 0x9c: ptr++; base='u'; accent=5; break;    /* UTF-8: U uml    */
+                    case 0xbd: ptr++; base='y'; accent=1; break;    /* UTF-8: y acute  */
+                    case 0x9d: ptr++; base='y'; accent=1; break;    /* UTF-8: Y acute  */
+                    case 0xbf: ptr++; base='y'; accent=5; break;    /* UTF-8: y uml    */
+                    case 0x9f: ptr++; base='s'; accent=1; break;    /* UTF-8: szlig    */
                     default:  /* mˆglicherweise ISO-8859-1 */
-                               base='a'; accent=4; break;    /* ISO-8859-1: √ A tilde */
+                               base='a'; accent=4; break;    /* ISO-8859-1: A tilde */
                  }
                  break;
 
@@ -24116,17 +23304,17 @@ static int init_blzf(int *cnt_p)
       blz_f=blz;     /* die einfache BLZ-Tabelle reicht aus */
       pz_f=pz_methoden;
          /* Zweigstellen-Array, komplett mit Nullen initialisiert (per calloc; keine Zweigstellen) */
-      if(!zweigstelle_f && !(zweigstelle_f=calloc(cnt+10,sizeof(int))))return ERROR_MALLOC;
+      if(!zweigstelle_f && !(zweigstelle_f=(int *)calloc(cnt+10,sizeof(int))))return ERROR_MALLOC;
    }
    else
       cnt=lut2_cnt;
    if(!blz_f){   /* Bankleitzahlen mit Filialen; eigenes Array erforderlich */
-      if(!(blz_f=calloc(cnt+10,sizeof(int))))return ERROR_MALLOC;
-      if(!(zweigstelle_f=calloc(cnt+10,sizeof(int)))){
+      if(!(blz_f=(int *)calloc(cnt+10,sizeof(int))))return ERROR_MALLOC;
+      if(!(zweigstelle_f=(int *)calloc(cnt+10,sizeof(int)))){
          FREE(blz_f);
          return ERROR_MALLOC;
       }
-      if(!(pz_f=calloc(cnt+10,sizeof(int)))){
+      if(!(pz_f=(int *)calloc(cnt+10,sizeof(int)))){
          FREE(blz_f);
          FREE(zweigstelle_f);
          return ERROR_MALLOC;
@@ -24189,7 +23377,7 @@ static int suche_int1(int a1,int a2,int *anzahl,int **start_idx,int **zweigstell
       if(retval==OK){
          ptr=data;
          C2UI(cnt1,ptr);
-         if(!(b_sort=malloc(cnt1*sizeof(int)))){
+         if(!(b_sort=(int *)malloc(cnt1*sizeof(int)))){
             FREE(blz_f);
             FREE(zweigstelle_f);
             return ERROR_MALLOC;
@@ -24199,7 +23387,7 @@ static int suche_int1(int a1,int a2,int *anzahl,int **start_idx,int **zweigstell
       }
       else{
             /* Indexblock nicht gefunden, Index jetzt aufbauen */
-         if(!(b_sort=calloc(cnt+10,sizeof(int))))return ERROR_MALLOC;
+         if(!(b_sort=(int *)calloc(cnt+10,sizeof(int))))return ERROR_MALLOC;
          for(i=0;i<cnt;i++)b_sort[i]=i;
          qsort(b_sort,cnt,sizeof(int),cmp);
       }
@@ -24244,7 +23432,7 @@ static int suche_int2(int a1,int a2,int *anzahl,int **start_idx,int **zweigstell
             C2UI(cnt1,ptr);
          else
             C2UI(cnt,ptr);
-         if(!(b_sort=malloc(cnt*sizeof(int)))){
+         if(!(b_sort=(int *)malloc(cnt*sizeof(int)))){
             if(blz_f!=blz)
                FREE(blz_f);
             else
@@ -24268,7 +23456,7 @@ static int suche_int2(int a1,int a2,int *anzahl,int **start_idx,int **zweigstell
       }
       else{
             /* Indexblock nicht gefunden, Index jetzt aufbauen */
-         if(!(b_sort=calloc(cnt+10,sizeof(int)))){
+         if(!(b_sort=(int *)calloc(cnt+10,sizeof(int)))){
             if(blz_f!=blz)
                FREE(blz_f);
             else
@@ -24325,7 +23513,7 @@ static int suche_str(char *such_name,int *anzahl,int **start_idx,int **zweigstel
       if(retval==OK){
          ptr=data;
          C2UI(cnt,ptr);
-         if(!(b_sort=malloc(cnt*sizeof(int)))){
+         if(!(b_sort=(int *)malloc(cnt*sizeof(int)))){
             FREE(blz_f);
             FREE(zweigstelle_f);
             return ERROR_MALLOC;
@@ -24335,7 +23523,7 @@ static int suche_str(char *such_name,int *anzahl,int **start_idx,int **zweigstel
       }
       else{
             /* Indexblock nicht gefunden, Index jetzt aufbauen */
-         if(!(b_sort=calloc(cnt+10,sizeof(int)))){
+         if(!(b_sort=(int *)calloc(cnt+10,sizeof(int)))){
             FREE(blz_f);
             FREE(zweigstelle_f);
             return ERROR_MALLOC;
@@ -24380,7 +23568,7 @@ static int *lut_suche_multiple_and(int *such_array,int *start1,int cnt1,int *sta
 
    if(cnt)*cnt=lut2_cnt;
    if(!such_array){
-      if(!(such_array=calloc(sizeof(int),lut2_cnt))){
+      if(!(such_array=(int *)calloc(sizeof(int),lut2_cnt))){
          if(retval)*retval=ERROR_MALLOC;
          return NULL;
       }
@@ -24445,14 +23633,14 @@ DLL_EXPORT int lut_suche_init(int uniq)
    int i,id;
    LUT_SUCHE_ARR *a;
 
-   if(!(a=calloc(sizeof(LUT_SUCHE_ARR),1)))return ERROR_MALLOC;
-   if(!lut_suche_arr && !(lut_suche_arr=calloc(sizeof(LUT_SUCHE_ARR*),last_lut_suche_idx=100)))return ERROR_MALLOC;
+   if(!(a=(LUT_SUCHE_ARR *)calloc(sizeof(LUT_SUCHE_ARR),1)))return ERROR_MALLOC;
+   if(!lut_suche_arr && !(lut_suche_arr=(LUT_SUCHE_ARR **)calloc(sizeof(LUT_SUCHE_ARR*),last_lut_suche_idx=100)))return ERROR_MALLOC;
    for(i=id=0;i<last_lut_suche_idx;i++)if(!lut_suche_arr[i]){  /* freien Index suchen */
       id=i;
       break;
    }
    if(i==last_lut_suche_idx){ /* der buffer wird zu klein, mehr allokieren */
-      if(!(lut_suche_arr=realloc(lut_suche_arr,sizeof(LUT_SUCHE_ARR*)*(last_lut_suche_idx+=100))))return ERROR_MALLOC;
+      if(!(lut_suche_arr=(LUT_SUCHE_ARR **)realloc(lut_suche_arr,sizeof(LUT_SUCHE_ARR*)*(last_lut_suche_idx+=100))))return ERROR_MALLOC;
       for(id=i++;i<last_lut_suche_idx;i++)lut_suche_arr[i]=NULL;
    }
    lut_suche_arr[id]=a;
@@ -24633,8 +23821,8 @@ DLL_EXPORT int lut_suche(int such_id,char *such_cmd,UINT4 *such_cnt,UINT4 **fili
 
    if(s){
       for(i=cnt=0;i<arr_cnt;i++)if(s[i])cnt++;
-      if(blz && !(*blz=malloc(cnt*4)))return ERROR_MALLOC;
-      if(filiale && !(*filiale=malloc(cnt*4)))return ERROR_MALLOC;
+      if(blz && !(*blz=(UINT4 *)malloc(cnt*4)))return ERROR_MALLOC;
+      if(filiale && !(*filiale=(UINT4 *)malloc(cnt*4)))return ERROR_MALLOC;
       last_blz=-1;
       if(suche->uniq){ /* hier muﬂ nicht mehr sortiert werden, da die BLZs schon sortiert sind */
          for(i=j=cnt=0;i<arr_cnt;i++)if(s[i] && blz_f[i]!=last_blz){
@@ -24797,8 +23985,8 @@ DLL_EXPORT int lut_suche_sort1(int anzahl,int *blz_base,int *zweigstellen_base,i
    if(idx_op)*idx_op=NULL;
    if(cnt_op)*cnt_op=NULL;
    *anzahl_o=0;
-   if(!(idx_a=malloc(anzahl*sizeof(int))))return ERROR_MALLOC;
-   if(!(cnt_o=malloc(anzahl*sizeof(int))))return ERROR_MALLOC;
+   if(!(idx_a=(int *)malloc(anzahl*sizeof(int))))return ERROR_MALLOC;
+   if(!(cnt_o=(int *)malloc(anzahl*sizeof(int))))return ERROR_MALLOC;
    for(i=0;i<anzahl;i++){ /* initialisieren */
       idx_a[i]=idx[i];
       cnt_o[i]=1;
@@ -24817,8 +24005,8 @@ DLL_EXPORT int lut_suche_sort1(int anzahl,int *blz_base,int *zweigstellen_base,i
          last_idx=blz_base[idx_a[i]];
          j++;
       }
-      if(!(idx_a=realloc(idx_a,j*sizeof(int))))return ERROR_MALLOC;
-      if(!(cnt_o=realloc(cnt_o,j*sizeof(int))))return ERROR_MALLOC;
+      if(!(idx_a=(int *)realloc(idx_a,j*sizeof(int))))return ERROR_MALLOC;
+      if(!(cnt_o=(int *)realloc(cnt_o,j*sizeof(int))))return ERROR_MALLOC;
       *anzahl_o=j;
    }
    else
@@ -24839,14 +24027,14 @@ DLL_EXPORT int lut_suche_sort2(int anzahl,int *blz,int *zweigstellen,int *anzahl
 {
    int i,j,last_blz,*idx_a,*blz_o,*zweigstellen_o;
 
-   idx_a=malloc(anzahl*sizeof(int));
+   idx_a=(int *)malloc(anzahl*sizeof(int));
    for(i=0;i<anzahl;i++)idx_a[i]=i; /* initialisieren */
    blz_suche_sort=blz;
    zw_suche_sort=zweigstellen;
 // #error lock f¸r sort einf¸gen wegen globalem blz_suche_sort und zw_suche_xort oder besser spezifische Sortierroutinen
    qsort(idx_a,anzahl,sizeof(int),cmp_suche_sort);
-   blz_o=malloc(anzahl*sizeof(int));
-   zweigstellen_o=malloc(anzahl*sizeof(int));
+   blz_o=(int *)malloc(anzahl*sizeof(int));
+   zweigstellen_o=(int *)malloc(anzahl*sizeof(int));
    if(uniq){
       for(last_blz=-1,i=j=0;i<anzahl;i++){
          if(blz[idx_a[i]]==last_blz)continue;
@@ -24856,8 +24044,8 @@ DLL_EXPORT int lut_suche_sort2(int anzahl,int *blz,int *zweigstellen,int *anzahl
          last_blz=blz[idx_a[i]];
       }
 //      fprintf(stderr,"cnt_o: %d\n",j);
-      if(!(blz_o=realloc(blz_o,j*sizeof(int))))return ERROR_MALLOC;
-      if(!(cnt_o=realloc(cnt_o,j*sizeof(int))))return ERROR_MALLOC;
+      if(!(blz_o=(int *)realloc(blz_o,j*sizeof(int))))return ERROR_MALLOC;
+      if(!(cnt_o=(int **)realloc(cnt_o,j*sizeof(int))))return ERROR_MALLOC;
       *anzahl_o=j;
    }
    else{
@@ -24906,22 +24094,22 @@ DLL_EXPORT int lut_suche_volltext(char *such_wort,int *anzahl,int *base_name_idx
       ptr=data;
       C2UL(vt_cnt_uniq,ptr);
       C2UL(vt_cnt,ptr);
-      if(!(volltext=malloc(vt_cnt*sizeof(char*)))){
+      if(!(volltext=(char **)malloc(vt_cnt*sizeof(char*)))){
          FREE(volltext_data);
          return ERROR_MALLOC;
       }
-      if(!(volltext_start=malloc((vt_cnt_uniq+1)*sizeof(int)))){
+      if(!(volltext_start=(int *)malloc((vt_cnt_uniq+1)*sizeof(int)))){
          FREE(volltext);
          FREE(volltext_data);
          return ERROR_MALLOC;
       }
-      if(!(sort_volltext=malloc(vt_cnt_uniq*sizeof(int)))){
+      if(!(sort_volltext=(int *)malloc(vt_cnt_uniq*sizeof(int)))){
          FREE(volltext);
          FREE(volltext_data);
          FREE(volltext_start);
          return ERROR_MALLOC;
       }
-      if(!(volltext_banken=malloc(vt_cnt*sizeof(int)))){
+      if(!(volltext_banken=(int *)malloc(vt_cnt*sizeof(int)))){
          FREE(volltext);
          FREE(volltext_data);
          FREE(volltext_start);
@@ -24991,19 +24179,18 @@ DLL_EXPORT int lut_suche_blz(int such1,int such2,int *anzahl,int **start_idx,int
    if(base_name)*base_name=blz_f;
    cnt=lut2_cnt;
    if(!sort_blz){
-      if(!(sort_blz=malloc(cnt*sizeof(int))))return ERROR_MALLOC;
+      if(!(sort_blz=(int *)malloc(cnt*sizeof(int))))return ERROR_MALLOC;
       for(i=0;i<cnt;i++)sort_blz[i]=i;
    }
    if(blz_base)*blz_base=blz_f;
    if(zweigstellen_base){
          /* Dummy-Array f¸r die Zweigstellen anlegen (nur Nullen; f¸r die R¸ckgabe erforderlich) */
-      if(!zweigstelle_f && !(zweigstelle_f=calloc(cnt+10,sizeof(int))))return ERROR_MALLOC;
+      if(!zweigstelle_f && !(zweigstelle_f=(int *)calloc(cnt+10,sizeof(int))))return ERROR_MALLOC;
       *zweigstellen_base=zweigstelle_f;
    }
    return suche_int1(such1,such2,anzahl,start_idx,zweigstellen_base,blz_base,&blz_f,&sort_blz,qcmp_blz,cnt,0);
 }
 
-#line 22783 "konto_check.lxx"
 /* Funktion lut_suche_bic() +ßßß2 */
 DLL_EXPORT int lut_suche_bic(char *such_name,int *anzahl,int **start_idx,int **zweigstellen_base,
       char ***base_name,int **blz_base)
@@ -25057,6 +24244,7 @@ DLL_EXPORT int lut_suche_pz(int such1,int such2,int *anzahl,int **start_idx,int 
 {
    int retval;
 
+
    if(anzahl)*anzahl=0;
    if(such2 && such1>such2)return INVALID_SEARCH_RANGE;
    if((init_status&7)<7)return LUT2_NOT_INITIALIZED;
@@ -25070,6 +24258,7 @@ DLL_EXPORT int lut_suche_pz(int such1,int such2,int *anzahl,int **start_idx,int 
 /* Funktion lut_suche_plz() +ßßß2 */
 DLL_EXPORT int lut_suche_plz(int such1,int such2,int *anzahl,int **start_idx,int **zweigstellen_base,int **base_name,int **blz_base)
 {
+
    if(anzahl)*anzahl=0;
    if(such2 && such1>such2)return INVALID_SEARCH_RANGE;
    if((init_status&7)<7)return LUT2_NOT_INITIALIZED;
@@ -25082,6 +24271,7 @@ DLL_EXPORT int lut_suche_plz(int such1,int such2,int *anzahl,int **start_idx,int
 /* Funktion lut_suche_regel() +ßßß2 */
 DLL_EXPORT int lut_suche_regel(int such1,int such2,int *anzahl,int **start_idx,int **zweigstellen_base,int **base_name,int **blz_base)
 {
+
    if(anzahl)*anzahl=0;
    if(such2 && such1>such2)return INVALID_SEARCH_RANGE;
    if((init_status&7)<7)return LUT2_NOT_INITIALIZED;
@@ -25134,10 +24324,10 @@ DLL_EXPORT int bic_info(char *bic1,int mode,int *anzahl,int *start_idx)
       case 0:
       default:
          retval=lut_suche_bic_h(bic1,&cnt,&s_idx,NULL,NULL,NULL);
-         if(start_idx)*start_idx=(s_idx-sort_bic_h);
+         if(start_idx)*start_idx=(s_idx-sort_bic_h)+1;
          if(!cnt){   /* Suche bei allen BICs (inklusive Nebenstellen) */
              retval=lut_suche_bic(bic1,&cnt,&s_idx,NULL,NULL,NULL);
-            if(start_idx)*start_idx=(sort_bic-s_idx);   /* negativer Startindex */
+            if(start_idx)*start_idx=(sort_bic-s_idx)-1;   /* negativer Startindex */
          }
          if(!cnt){   /* noch nichts gefunden, Zweigstellenteil des BIC mit XXX auff¸llen (z.B. f¸r Postbank) */
             memcpy(bic2,bic1,8); /* Hauptstellenteil kopieren */
@@ -25147,16 +24337,16 @@ DLL_EXPORT int bic_info(char *bic1,int mode,int *anzahl,int *start_idx)
             *++ptr=0;
             retval=lut_suche_bic(bic2,&cnt,&s_idx,NULL,NULL,NULL);
             if(retval>=OK)retval=OK_SHORT_BIC_USED;
-            if(start_idx)*start_idx=(sort_bic-s_idx);   /* negativer Startindex */
+            if(start_idx)*start_idx=(sort_bic-s_idx)-1;   /* negativer Startindex */
          }
          break;
       case 1:
          retval=lut_suche_bic(bic1,&cnt,&s_idx,NULL,NULL,NULL);
-         if(start_idx)*start_idx=(sort_bic-s_idx);   /* negativer Startindex */
+         if(start_idx)*start_idx=(sort_bic-s_idx)-1;   /* negativer Startindex */
          break;
       case 2:
          retval=lut_suche_bic_h(bic1,&cnt,&s_idx,NULL,NULL,NULL);
-         if(start_idx)*start_idx=(s_idx-sort_bic_h);
+         if(start_idx)*start_idx=(s_idx-sort_bic_h)+1;
          break;
    }
    if(anzahl)*anzahl=cnt;
@@ -25188,12 +24378,12 @@ DLL_EXPORT int bic_info(char *bic1,int mode,int *anzahl,int *start_idx)
 
 DLL_EXPORT int bic_aenderung(char *bic1,int mode,int filiale,int*retval)
 {
-   return bic_fkt_c(bic1,mode,filiale,retval,aenderung);
+   return bic_fkt_c(bic1,mode,filiale,retval,aenderung,LUT2_AENDERUNG_NOT_INITIALIZED);
 }
 
 DLL_EXPORT int biq_aenderung(int idx,int*retval)
 {
-   return biq_fkt_c(idx,retval,aenderung);
+   return biq_fkt_c(idx,retval,aenderung,LUT2_AENDERUNG_NOT_INITIALIZED);
 }
 
 DLL_EXPORT int iban_aenderung(char *iban,int filiale,int*retval)
@@ -25211,12 +24401,12 @@ DLL_EXPORT int iban_aenderung(char *iban,int filiale,int*retval)
 
 DLL_EXPORT int bic_loeschung(char *bic1,int mode,int filiale,int*retval)
 {
-   return bic_fkt_c(bic1,mode,filiale,retval,loeschung);
+   return bic_fkt_c(bic1,mode,filiale,retval,loeschung,LUT2_LOESCHUNG_NOT_INITIALIZED);
 }
 
 DLL_EXPORT int biq_loeschung(int idx,int*retval)
 {
-   return biq_fkt_c(idx,retval,loeschung);
+   return biq_fkt_c(idx,retval,loeschung,LUT2_LOESCHUNG_NOT_INITIALIZED);
 }
 
 DLL_EXPORT int iban_loeschung(char *iban,int filiale,int*retval)
@@ -25234,12 +24424,12 @@ DLL_EXPORT int iban_loeschung(char *iban,int filiale,int*retval)
 
 DLL_EXPORT int bic_iban_regel(char *bic1,int mode,int filiale,int*retval)
 {
-   return bic_fkt_i(bic1,mode,filiale,retval,iban_regel);
+   return bic_fkt_i(bic1,mode,filiale,retval,iban_regel,LUT2_IBAN_REGEL_NOT_INITIALIZED);
 }
 
 DLL_EXPORT int biq_iban_regel(int idx,int*retval)
 {
-   return biq_fkt_i(idx,retval,iban_regel);
+   return biq_fkt_i(idx,retval,iban_regel,LUT2_IBAN_REGEL_NOT_INITIALIZED);
 }
 
 DLL_EXPORT int iban_iban_regel(char *iban,int filiale,int*retval)
@@ -25257,12 +24447,12 @@ DLL_EXPORT int iban_iban_regel(char *iban,int filiale,int*retval)
 
 DLL_EXPORT int bic_nachfolge_blz(char *bic1,int mode,int filiale,int*retval)
 {
-   return bic_fkt_i(bic1,mode,filiale,retval,nachfolge_blz);
+   return bic_fkt_i(bic1,mode,filiale,retval,nachfolge_blz,LUT2_NACHFOLGE_BLZ_NOT_INITIALIZED);
 }
 
 DLL_EXPORT int biq_nachfolge_blz(int idx,int*retval)
 {
-   return biq_fkt_i(idx,retval,nachfolge_blz);
+   return biq_fkt_i(idx,retval,nachfolge_blz,LUT2_NACHFOLGE_BLZ_NOT_INITIALIZED);
 }
 
 DLL_EXPORT int iban_nachfolge_blz(char *iban,int filiale,int*retval)
@@ -25280,12 +24470,12 @@ DLL_EXPORT int iban_nachfolge_blz(char *iban,int filiale,int*retval)
 
 DLL_EXPORT int bic_nr(char *bic1,int mode,int filiale,int*retval)
 {
-   return bic_fkt_i(bic1,mode,filiale,retval,bank_nr);
+   return bic_fkt_i(bic1,mode,filiale,retval,bank_nr,LUT2_NR_NOT_INITIALIZED);
 }
 
 DLL_EXPORT int biq_nr(int idx,int*retval)
 {
-   return biq_fkt_i(idx,retval,bank_nr);
+   return biq_fkt_i(idx,retval,bank_nr,LUT2_NR_NOT_INITIALIZED);
 }
 
 DLL_EXPORT int iban_nr(char *iban,int filiale,int*retval)
@@ -25303,12 +24493,12 @@ DLL_EXPORT int iban_nr(char *iban,int filiale,int*retval)
 
 DLL_EXPORT int bic_pan(char *bic1,int mode,int filiale,int*retval)
 {
-   return bic_fkt_i(bic1,mode,filiale,retval,pan);
+   return bic_fkt_i(bic1,mode,filiale,retval,pan,LUT2_PAN_NOT_INITIALIZED);
 }
 
 DLL_EXPORT int biq_pan(int idx,int*retval)
 {
-   return biq_fkt_i(idx,retval,pan);
+   return biq_fkt_i(idx,retval,pan,LUT2_PAN_NOT_INITIALIZED);
 }
 
 DLL_EXPORT int iban_pan(char *iban,int filiale,int*retval)
@@ -25326,12 +24516,12 @@ DLL_EXPORT int iban_pan(char *iban,int filiale,int*retval)
 
 DLL_EXPORT int bic_plz(char *bic1,int mode,int filiale,int*retval)
 {
-   return bic_fkt_i(bic1,mode,filiale,retval,plz);
+   return bic_fkt_i(bic1,mode,filiale,retval,plz,LUT2_PLZ_NOT_INITIALIZED);
 }
 
 DLL_EXPORT int biq_plz(int idx,int*retval)
 {
-   return biq_fkt_i(idx,retval,plz);
+   return biq_fkt_i(idx,retval,plz,LUT2_PLZ_NOT_INITIALIZED);
 }
 
 DLL_EXPORT int iban_plz(char *iban,int filiale,int*retval)
@@ -25349,12 +24539,12 @@ DLL_EXPORT int iban_plz(char *iban,int filiale,int*retval)
 
 DLL_EXPORT int bic_pz(char *bic1,int mode,int filiale,int*retval)
 {
-   return bic_fkt_i(bic1,mode,filiale,retval,pz_methoden);
+   return bic_fkt_i(bic1,mode,filiale,retval,pz_methoden,LUT2_PZ_NOT_INITIALIZED);
 }
 
 DLL_EXPORT int biq_pz(int idx,int*retval)
 {
-   return biq_fkt_i(idx,retval,pz_methoden);
+   return biq_fkt_i(idx,retval,pz_methoden,LUT2_PZ_NOT_INITIALIZED);
 }
 
 DLL_EXPORT int iban_pz(char *iban,int filiale,int*retval)
@@ -25372,12 +24562,12 @@ DLL_EXPORT int iban_pz(char *iban,int filiale,int*retval)
 
 DLL_EXPORT const char *bic_bic(char *bic1,int mode,int filiale,int*retval)
 {
-   return bic_fkt_s(bic1,mode,filiale,retval,bic);
+   return bic_fkt_s(bic1,mode,filiale,retval,bic,LUT2_BIC_NOT_INITIALIZED);
 }
 
 DLL_EXPORT const char *biq_bic(int idx,int*retval)
 {
-   return biq_fkt_s(idx,retval,bic);
+   return biq_fkt_s(idx,retval,bic,LUT2_BIC_NOT_INITIALIZED);
 }
 
 DLL_EXPORT const char *iban_bic(char *iban,int filiale,int*retval)
@@ -25395,12 +24585,12 @@ DLL_EXPORT const char *iban_bic(char *iban,int filiale,int*retval)
 
 DLL_EXPORT const char *bic_bic_h(char *bic1,int mode,int filiale,int*retval)
 {
-   return bic_fkt_s(bic1,mode,filiale,retval,bic_h);
+   return bic_fkt_s(bic1,mode,filiale,retval,bic_h,LUT2_BIC_NOT_INITIALIZED);
 }
 
 DLL_EXPORT const char *biq_bic_h(int idx,int*retval)
 {
-   return biq_fkt_s(idx,retval,bic_h);
+   return biq_fkt_s(idx,retval,bic_h,LUT2_BIC_NOT_INITIALIZED);
 }
 
 DLL_EXPORT const char *iban_bic_h(char *iban,int filiale,int*retval)
@@ -25418,12 +24608,12 @@ DLL_EXPORT const char *iban_bic_h(char *iban,int filiale,int*retval)
 
 DLL_EXPORT const char *bic_name(char *bic1,int mode,int filiale,int*retval)
 {
-   return bic_fkt_s(bic1,mode,filiale,retval,name);
+   return bic_fkt_s(bic1,mode,filiale,retval,name,LUT2_NAME_NOT_INITIALIZED);
 }
 
 DLL_EXPORT const char *biq_name(int idx,int*retval)
 {
-   return biq_fkt_s(idx,retval,name);
+   return biq_fkt_s(idx,retval,name,LUT2_NAME_NOT_INITIALIZED);
 }
 
 DLL_EXPORT const char *iban_name(char *iban,int filiale,int*retval)
@@ -25441,12 +24631,12 @@ DLL_EXPORT const char *iban_name(char *iban,int filiale,int*retval)
 
 DLL_EXPORT const char *bic_name_kurz(char *bic1,int mode,int filiale,int*retval)
 {
-   return bic_fkt_s(bic1,mode,filiale,retval,name_kurz);
+   return bic_fkt_s(bic1,mode,filiale,retval,name_kurz,LUT2_NAME_KURZ_NOT_INITIALIZED);
 }
 
 DLL_EXPORT const char *biq_name_kurz(int idx,int*retval)
 {
-   return biq_fkt_s(idx,retval,name_kurz);
+   return biq_fkt_s(idx,retval,name_kurz,LUT2_NAME_KURZ_NOT_INITIALIZED);
 }
 
 DLL_EXPORT const char *iban_name_kurz(char *iban,int filiale,int*retval)
@@ -25464,12 +24654,12 @@ DLL_EXPORT const char *iban_name_kurz(char *iban,int filiale,int*retval)
 
 DLL_EXPORT const char *bic_ort(char *bic1,int mode,int filiale,int*retval)
 {
-   return bic_fkt_s(bic1,mode,filiale,retval,ort);
+   return bic_fkt_s(bic1,mode,filiale,retval,ort,LUT2_ORT_NOT_INITIALIZED);
 }
 
 DLL_EXPORT const char *biq_ort(int idx,int*retval)
 {
-   return biq_fkt_s(idx,retval,ort);
+   return biq_fkt_s(idx,retval,ort,LUT2_ORT_NOT_INITIALIZED);
 }
 
 DLL_EXPORT const char *iban_ort(char *iban,int filiale,int*retval)
@@ -25477,19 +24667,23 @@ DLL_EXPORT const char *iban_ort(char *iban,int filiale,int*retval)
    return iban_fkt_s(iban,filiale,retval,lut_ort);
 }
 
-static int bic_fkt_c(char *bic1,int mode,int filiale,int*retval,char *base)
+static int bic_fkt_c(char *bic1,int mode,int filiale,int*retval,char *base,int error)
 {
    int cnt,start_idx,rv,ret1,ret2;
 
+   if(!base){
+      if(retval)*retval=error;
+      return 0;
+   }
    if((ret1=bic_info(bic1,mode,&cnt,&start_idx))<0){
       if(retval)*retval=ret1;
-      return -1;
+      return 0;
    }
    if(filiale>=cnt){
       if(retval)*retval=LUT2_INDEX_OUT_OF_RANGE;
-      return -1;
+      return 0;
    }
-   rv=biq_fkt_c(start_idx+filiale,&ret2,base);
+   rv=biq_fkt_c(start_idx+filiale,&ret2,base,error);
    if(retval){
       if(ret2<0)
          *retval=ret2;
@@ -25499,21 +24693,49 @@ static int bic_fkt_c(char *bic1,int mode,int filiale,int*retval,char *base)
    return rv;
 }
 
-static int biq_fkt_c(int idx,int*retval,char *base)
+static int biq_fkt_c(int idx,int*retval,char *base,int error)
 {
+   int ret;
+
+   if(!base){
+      if(retval)*retval=error;
+      return 0;
+   }
+   if(!idx){   /* Index 0 ist f¸r Fehlerzustand reserviert */
+      if(retval)*retval=INVALID_BIQ_INDEX;
+      return 0;
+   }
+   else if(idx>0)
+      idx--;
+   else
+      idx++;
    if(idx>0){
-     if(idx>lut2_cnt){  /* der Test ist nur sehr grob, aber es gibt an dieser Stelle nicht mehr Infos */
-        if(retval)*retval=LUT2_INDEX_OUT_OF_RANGE;
-        return -1;
-     }
-     if(retval)*retval=OK;
-     return (int)base[sort_bic_h[idx]];
+      if(idx>lut2_cnt){  /* der Test ist nur sehr grob, aber es gibt an dieser Stelle nicht mehr Infos */
+         if(retval)*retval=LUT2_INDEX_OUT_OF_RANGE;
+         return 0;
+      }
+      if(!sort_bic_h){
+         ret=lut_suche_bic_h("MARKDEF1100",NULL,NULL,NULL,NULL,NULL);  /* sort_bic_h initialisieren */
+         if(ret<0){
+            if(retval)*retval=ret;
+            return 0;
+         }
+      }
+      if(retval)*retval=OK;
+      return (int)base[sort_bic_h[idx]];
    }
    else{
       idx=-idx;
       if(idx>lut2_cnt){
          if(retval)*retval=LUT2_INDEX_OUT_OF_RANGE;
-         return -1;
+         return 0;
+      }
+      if(!sort_bic){
+         ret=lut_suche_bic("MARKDEF1100",NULL,NULL,NULL,NULL,NULL);  /* sort_bic initialisieren */
+         if(ret<0){
+            if(retval)*retval=ret;
+            return 0;
+         }
       }
       if(retval)*retval=OK;
       return (int)base[sort_bic[idx]];
@@ -25527,31 +24749,35 @@ static int iban_fkt_c(char *iban,int filiale,int *retval,int(*fkt)(char*,int,int
       /* nur zwei kleine Tests */
    if((*iban!='d' && *iban!='D') || (iban[1]!='e' && iban[1]!='E')){
       if(retval)*retval= IBAN_ONLY_GERMAN;
-      return -1;
+      return 0;
    }
    if(strlen(iban)!=22){
       if(retval)*retval=INVALID_IBAN_LENGTH;
-      return -1;
+      return 0;
    }
 
    memcpy(blz,iban+4,8);
    *(blz+8)=0;
-   return fkt(iban,filiale,retval);
+   return fkt(blz,filiale,retval);
 }
 
-static int bic_fkt_i(char *bic1,int mode,int filiale,int*retval,int *base)
+static int bic_fkt_i(char *bic1,int mode,int filiale,int*retval,int *base,int error)
 {
    int cnt,start_idx,rv,ret1,ret2;
 
+   if(!base){
+      if(retval)*retval=error;
+      return 0;
+   }
    if((ret1=bic_info(bic1,mode,&cnt,&start_idx))<0){
       if(retval)*retval=ret1;
-      return -1;
+      return 0;
    }
    if(filiale>=cnt){
       if(retval)*retval=LUT2_INDEX_OUT_OF_RANGE;
-      return -1;
+      return 0;
    }
-   rv=biq_fkt_i(start_idx+filiale,&ret2,base);
+   rv=biq_fkt_i(start_idx+filiale,&ret2,base,error);
    if(retval){
       if(ret2<0)
          *retval=ret2;
@@ -25561,21 +24787,52 @@ static int bic_fkt_i(char *bic1,int mode,int filiale,int*retval,int *base)
    return rv;
 }
 
-static int biq_fkt_i(int idx,int*retval,int *base)
+static int biq_fkt_i(int idx,int*retval,int *base,int error)
 {
+   int ret;
+
+   if(!base){
+      if(retval)*retval=error;
+      return 0;
+   }
+   if(!idx){   /* Index 0 ist f¸r Fehlerzustand reserviert */
+      if(retval)*retval=INVALID_BIQ_INDEX;
+      return 0;
+   }
+   else if(idx>0)
+      idx--;
+   else
+      idx++;
    if(idx>0){
      if(idx>lut2_cnt){  /* der Test ist nur sehr grob, aber es gibt an dieser Stelle nicht mehr Infos */
         if(retval)*retval=LUT2_INDEX_OUT_OF_RANGE;
-        return -1;
+        return 0;
+     }
+     if(!sort_bic_h){
+        ret=lut_suche_bic_h("MARKDEF1100",NULL,NULL,NULL,NULL,NULL);  /* sort_bic_h initialisieren */
+        if(ret<0){
+           if(retval)*retval=ret;
+           return 0;
+        }
      }
      if(retval)*retval=OK;
-     return base[sort_bic_h[idx]];
+     if(base==pz_methoden)
+        return  base[startidx_r[sort_bic_h[idx]]];
+     else
+        return base[sort_bic_h[idx]];
    }
    else{
       idx=-idx;
       if(idx>lut2_cnt){
          if(retval)*retval=LUT2_INDEX_OUT_OF_RANGE;
-         return -1;
+         return 0;
+      }
+      if(!sort_bic){
+         ret=lut_suche_bic("MARKDEF1100",NULL,NULL,NULL,NULL,NULL);  /* sort_bic initialisieren */
+         if(ret<0){
+            if(retval)*retval=ret;
+            return 0;
+         }
       }
       if(retval)*retval=OK;
       return base[sort_bic[idx]];
@@ -25589,23 +24846,27 @@ static int iban_fkt_i(char *iban,int filiale,int *retval,int(*fkt)(char*,int,int
       /* nur zwei kleine Tests */
    if((*iban!='d' && *iban!='D') || (iban[1]!='e' && iban[1]!='E')){
       if(retval)*retval= IBAN_ONLY_GERMAN;
-      return -1;
+      return 0;
    }
    if(strlen(iban)!=22){
       if(retval)*retval=INVALID_IBAN_LENGTH;
-      return -1;
+      return 0;
    }
 
    memcpy(blz,iban+4,8);
    *(blz+8)=0;
-   return fkt(iban,filiale,retval);
+   return fkt(blz,filiale,retval);
 }
 
-static const char *bic_fkt_s(char *bic1,int mode,int filiale,int*retval,char **base)
+static const char *bic_fkt_s(char *bic1,int mode,int filiale,int*retval,char **base,int error)
 {
    const char *rv;
    int cnt,start_idx,ret1,ret2;
 
+   if(!base){
+      if(retval)*retval=error;
+      return NULL;
+   }
    if((ret1=bic_info(bic1,mode,&cnt,&start_idx))<0){
       if(retval)*retval=ret1;
       return NULL;
@@ -25614,7 +24875,7 @@ static const char *bic_fkt_s(char *bic1,int mode,int filiale,int*retval,char **b
       if(retval)*retval=LUT2_INDEX_OUT_OF_RANGE;
       return NULL;
    }
-   rv=biq_fkt_s(start_idx+filiale,&ret2,base);
+   rv=biq_fkt_s(start_idx+filiale,&ret2,base,error);
    if(retval){
       if(ret2<0)
          *retval=ret2;
@@ -25624,21 +24885,50 @@ static const char *bic_fkt_s(char *bic1,int mode,int filiale,int*retval,char **b
    return rv;
 }
 
-static const char *biq_fkt_s(int idx,int*retval,char **base)
+static const char *biq_fkt_s(int idx,int*retval,char **base,int error)
 {
+   int ret;
+
+   if(!base){
+      if(retval)*retval=error;
+      return NULL;
+   }
+   if(!idx){   /* Index 0 ist f¸r Fehlerzustand reserviert */
+      if(retval)*retval=INVALID_BIQ_INDEX;
+      return NULL;
+   }
+   else if(idx>0)
+      idx--;
+   else
+      idx++;
+
    if(idx>0){
-     if(idx>lut2_cnt){  /* der Test ist nur sehr grob, aber es gibt an dieser Stelle nicht mehr Infos */
-        if(retval)*retval=LUT2_INDEX_OUT_OF_RANGE;
-        return NULL;
-     }
-     if(retval)*retval=OK;
-     return base[sort_bic_h[idx]];
+      if(idx>lut2_cnt){  /* der Test ist nur sehr grob, aber es gibt an dieser Stelle nicht mehr Infos */
+         if(retval)*retval=LUT2_INDEX_OUT_OF_RANGE;
+         return NULL;
+      }
+      if(!sort_bic_h){
+         ret=lut_suche_bic_h("MARKDEF1100",NULL,NULL,NULL,NULL,NULL);  /* sort_bic_h initialisieren */
+         if(ret<0){
+            if(retval)*retval=ret;
+            return NULL;
+         }
+      }
+      if(retval)*retval=OK;
+      return base[sort_bic_h[idx]];
    }
    else{
       idx=-idx;
       if(idx>lut2_cnt){
          if(retval)*retval=LUT2_INDEX_OUT_OF_RANGE;
          return NULL;
+      }
+      if(!sort_bic){
+         ret=lut_suche_bic("MARKDEF1100",NULL,NULL,NULL,NULL,NULL);  /* sort_bic initialisieren */
+         if(ret<0){
+            if(retval)*retval=ret;
+            return NULL;
+         }
       }
       if(retval)*retval=OK;
       return base[sort_bic[idx]];
@@ -25705,7 +24995,7 @@ DLL_EXPORT int kto_check_set_default_bin(char *key,char *val,int size)
          offset_k[i]=default_key[i]-default_buffer;
          offset_v[i]=default_val[i]-default_buffer;
       }
-      if(!(ptr=realloc(default_buffer,default_bufsize+INITIAL_DEFAULT_BUFSIZE)))return ERROR_MALLOC;
+      if(!(ptr=(char *)realloc(default_buffer,default_bufsize+INITIAL_DEFAULT_BUFSIZE)))return ERROR_MALLOC;
       default_bufsize+=INITIAL_DEFAULT_BUFSIZE;
       default_buffer=ptr;
       for(i=0;i<default_cnt;i++){
@@ -25749,7 +25039,7 @@ static int kto_check_clear_default(void)
    int i;
 
    if(!default_buffer){ /* muﬂ noch Speicher f¸r den buffer allokieren */
-      if(!(default_buffer=calloc(INITIAL_DEFAULT_BUFSIZE,1))){
+      if(!(default_buffer=(char *)calloc(INITIAL_DEFAULT_BUFSIZE,1))){
          default_buffer=NULL;
          return ERROR_MALLOC;
       }
@@ -25810,7 +25100,7 @@ DLL_EXPORT int kto_check_init_default(char *lut_name,int block_id)
    if(!block_id)block_id=LUT2_DEFAULT;
    if((ret=read_lut_block(lut_name,block_id,&blocklen,&data))!=OK)RETURN(ret);
    if(default_bufsize<(int)blocklen){
-      if(!(ptr=realloc(default_buffer,default_bufsize+INITIAL_DEFAULT_BUFSIZE)))
+      if(!(ptr=(char *)realloc(default_buffer,default_bufsize+INITIAL_DEFAULT_BUFSIZE)))
          return ERROR_MALLOC;
       else
          default_buffer=ptr;
@@ -25925,7 +25215,7 @@ DLL_EXPORT int kto_check_write_default(char *lutfile,int block_id)
    const char *ptr;
    int i,j,ret;
 
-   if(!(buffer=calloc(default_bufsize+default_cnt*4+58,1)))return ERROR_MALLOC;
+   if(!(buffer=(char *)calloc(default_bufsize+default_cnt*4+58,1)))return ERROR_MALLOC;
    for(ptr="Default Block",dptr=buffer;(*dptr++=*ptr++););  /* Signatur Block gesamt */
    UL2C(default_cnt,dptr);
    for(i=0;i<default_cnt;i++)UL2C(default_val_size[i],dptr);
@@ -26224,7 +25514,7 @@ static int convert_encoding(char **data,UINT4 *len)
 
       case 2:  /* UTF-8 */
       case 52:
-         if(!(buffer=malloc(buflen+=8192)))return ERROR_MALLOC;
+         if(!(buffer=(unsigned char *)malloc(buflen+=8192)))return ERROR_MALLOC;
          current_encoding=(current_encoding/10)*10+2;
          sptr=UCP *data;
          eptr1=sptr+*len;
@@ -26242,11 +25532,11 @@ static int convert_encoding(char **data,UINT4 *len)
             }
             if(sptr<eptr1){         /* es wird langsam eng; buffer vergrˆﬂern */
                offset=dptr-buffer;  /* die Buffer-Adresse verschiebt sich u.U.; dptr muﬂ korrigiert werden */
-               if(!(buffer=realloc(buffer,buflen+=4096)))return ERROR_MALLOC;
+               if(!(buffer=(unsigned char *)realloc(buffer,buflen+=4096)))return ERROR_MALLOC;
                dptr=buffer+offset;
             }
          }
-         buffer=realloc(buffer,buflen=(dptr-buffer)+10);
+         buffer=(unsigned char *)realloc(buffer,buflen=(dptr-buffer)+10);
          if(!keep_raw_data_flag)free(*data);   /* alte Daten, werden nicht mehr benˆtigt */
          *data=SCP buffer;
          *len=buflen;
@@ -26254,7 +25544,7 @@ static int convert_encoding(char **data,UINT4 *len)
 
       case 3:  /* HTML */
       case 53:
-         if(!(buffer=malloc(buflen+=16384)))return ERROR_MALLOC;
+         if(!(buffer=(unsigned char *)malloc(buflen+=16384)))return ERROR_MALLOC;
          current_encoding=(current_encoding/10)*10+3;
          sptr=UCP *data;
          eptr1=sptr+*len;
@@ -26272,7 +25562,7 @@ static int convert_encoding(char **data,UINT4 *len)
             }
             if(sptr<eptr1){         /* es wird langsam eng; buffer vergrˆﬂern */
                offset=dptr-buffer;  /* die Buffer-Adresse verschiebt sich u.U.; dptr muﬂ korrigiert werden */
-               if(!(buffer=realloc(buffer,buflen+=8192)))return ERROR_MALLOC;
+               if(!(buffer=(unsigned char *)realloc(buffer,buflen+=8192)))return ERROR_MALLOC;
                dptr=buffer+offset;
             }
          }
@@ -26284,7 +25574,7 @@ static int convert_encoding(char **data,UINT4 *len)
       case 4:  /* DOS CP 850 */
       case 54:
          if(keep_raw_data_flag){   /* Daten kopieren, Kopie bearbeiten */
-            if(!(buffer=malloc(buflen)))return ERROR_MALLOC;
+            if(!(buffer=(unsigned char *)malloc(buflen)))return ERROR_MALLOC;
             current_encoding=(current_encoding/10)*10+4;
             for(sptr=UCP *data,eptr1=sptr+*len,dptr=buffer;sptr<eptr1;sptr++,dptr++)switch(*sptr){
                case 0xe4: *dptr=0x84; break;    /* ‰ */
@@ -26649,6 +25939,7 @@ DLL_EXPORT const char *pz2str(int pz,int *ret)
       case 5104: return "A4e";
       case 6051: return "51f";
       case 6090: return "90f";
+      case 7090: return "90g";
       default:   return "???";
    }
 }
@@ -26705,7 +25996,7 @@ DLL_EXPORT int lut_keine_iban_berechnung(char *iban_blacklist,char *lutfile,int 
        * Fall zu klein. Da das Array nur zum Sortieren benˆtigt und gleich
        * wieder freigegeben wird, ist das egal.
        */
-   if(!(ibuffer=calloc(size/8,sizeof(int))))return ERROR_MALLOC;
+   if(!(ibuffer=(int *)calloc(size/8,sizeof(int))))return ERROR_MALLOC;
 
       /* die Daten einlesen */
    for(cnt=0;!feof(in);){
@@ -26720,7 +26011,7 @@ DLL_EXPORT int lut_keine_iban_berechnung(char *iban_blacklist,char *lutfile,int 
       ibuffer[cnt++]=atoi(line);
    }
    qsort(ibuffer,cnt,sizeof(int),cmp_int);
-   if(!(ptr=buffer=calloc(cnt+10,sizeof(int))))return ERROR_MALLOC;
+   if(!(ptr=buffer=(char *)calloc(cnt+10,sizeof(int))))return ERROR_MALLOC;
    bufsize=(cnt+10)*sizeof(int);
 
       /* nun den Block in die LUT-Datei schreiben: zuerst die Anzahl, dann die BLZs */
@@ -26736,7 +26027,7 @@ DLL_EXPORT int lut_keine_iban_berechnung(char *iban_blacklist,char *lutfile,int 
 
       /* Info-Block holen und Blockliste aktualisieren (falls noch nicht geschehen) */
    if(read_lut_block_int(lut,0,LUT2_INFO+set_offset,&cnt,&sptr)>0){
-      if(bufsize<(int)cnt+16 && !(buffer=realloc(buffer,cnt+16)))return ERROR_MALLOC;  /* buffer u.U. vergrˆﬂern */
+      if(bufsize<(int)cnt+16 && !(buffer=(char *)realloc(buffer,cnt+16)))return ERROR_MALLOC;  /* buffer u.U. vergrˆﬂern */
       for(fertig=i=0,ptr=sptr,dptr=buffer;i<(int)cnt && !fertig;){
          for(dptr1=dptr;*ptr!='\n' && i<(int)cnt && !fertig;i++)*dptr++=*ptr++; /* eine Zeile holen */
          *dptr=0;
@@ -26761,6 +26052,29 @@ DLL_EXPORT int lut_keine_iban_berechnung(char *iban_blacklist,char *lutfile,int 
    free(buffer);
    free(ibuffer);
    return retval;
+}
+
+/* Funktion pz_aenderungen_enable() +ßßß1 */
+/* ###########################################################################
+ * # Die Funktion pz_aenderungen_enable() dient dazu, den Status des Flags   #
+ * # pz_aenderungen_aktivieren abzufragen bzw. zu setzen. Falls die Variable #
+ * # set 1 ist, werden die ƒnderungen aktiviert, falls sie 0 ist, werden     #
+ * # die ƒnderungen deaktiviert. Bei allen anderen Werten wird das aktuelle  #
+ * # Flag nicht ver‰ndert, sondern nur der Status zur¸ckgegeben.             #
+ * #                                                                         #
+ * # Parameter:                                                              #
+ * #    set:        0 oder 1: ƒnderungen deaktivieren/aktivieren             #
+ * #                anderer Wert: nur Abfrage des Status                     #
+ * # R¸ckgabe:      aktueller Status des Flags                               #                                                               #
+ * #                                                                         #
+ * # Copyright (C) 2014 Michael Plugge <m.plugge@hs-mannheim.de>             #
+ * ###########################################################################
+ */
+
+DLL_EXPORT int pz_aenderungen_enable(int set)
+{
+   if(set==0 || set==1)pz_aenderungen_aktivieren=set;
+   return pz_aenderungen_aktivieren;
 }
 
 #if DEBUG>0
@@ -26965,4 +26279,5 @@ XV kc_free(char *ptr)EXCLUDED_V
 DLL_EXPORT void *kc_alloc(int size,int *retval)EXCLUDED_VP
 XI set_default_compression(int mode)EXCLUDED
 XI lut_keine_iban_berechnung(char *iban_blacklist,char *lutfile,int set)EXCLUDED
+XI pz_aenderungen_enable(int set)EXCLUDED
 #endif
