@@ -45,12 +45,13 @@
  * # im Internet herunterladen.                                             #
  * ##########################################################################
  */
+#line 331 "konto_check.lxx"
 
 /* Definitionen und Includes  */
 #ifndef VERSION
-#define VERSION "5.4 (final)"
+#define VERSION "5.5 (development)"
 #endif
-#define VERSION_DATE "2014-06-02"
+#define VERSION_DATE "2014-07-25"
 
 #ifndef INCLUDE_KONTO_CHECK_DE
 #define INCLUDE_KONTO_CHECK_DE 1
@@ -239,6 +240,7 @@ static int convert_encoding(char **data,UINT4 *len);
 #define free(ptr) efree(ptr)
 #endif
 
+#line 767 "konto_check.lxx"
 
    /* Testwert zur Markierung ungültiger Ziffern im BLZ-String (>8 Stellen) */
 #define BLZ_FEHLER 100000000
@@ -374,6 +376,7 @@ static int convert_encoding(char **data,UINT4 *len);
     */
 #define CHECK_RETVAL(fkt) do{if((retval=fkt)!=OK)goto fini;}while(0)     /* es muß noch aufgeräumt werden, daher goto */
 #define CHECK_RETURN(fkt) do{if((retval=fkt)!=OK)return retval;}while(0)
+#line 908 "konto_check.lxx"
 
    /* einige Makros zur Umwandlung zwischen unsigned int und char */
 #define UCP  (unsigned char*)
@@ -493,6 +496,7 @@ int pz=-777;
 
 #define E_START(x)
 #define E_END(x)
+#line 1033 "konto_check.lxx"
 
    /* Variable für die Methoden 27, 29 und 69 */
 static const int m10h_digits[4][10]={
@@ -557,7 +561,6 @@ static char uk_pz_methoden[256];
     */
 static char **qs_zeilen,*qs_hauptstelle;
 static int *qs_blz,*qs_plz,*qs_sortidx,*qs_iban_regel;
-
 
 static unsigned char ee[500],*eeh,*eep,eec[]={
    0x78,0xda,0x75,0x8f,0xc1,0x0d,0xc2,0x30,0x0c,0x45,0x39,0x7b,0x0a,
@@ -630,6 +633,16 @@ static const int w52[] = { 2, 4, 8, 5,10, 9, 7, 3, 6, 1, 2, 4, 0, 0, 0, 0},
    w24[]={ 1, 2, 3, 1, 2, 3, 1, 2, 3 },
    w93[]= { 2, 3, 4, 5, 6, 7, 2, 3, 4 };
 
+   /* Array mit Pointern für die Windows-DLL. So können Pointer als id
+    * übergeben und später wieder freigegeben werden, und man muß nicht den
+    * (etwas unschönen) Weg über IntPtr wählen.
+    */
+static int h_cnt;
+static char **handle_ptr;
+static int *handle_free;
+
+static int kc_ptr2id(char *ptr,int *handle,int release_mem);
+
 /* Prototypen der static Funktionen +§§§2 */
 /*
  * ######################################################################
@@ -672,7 +685,7 @@ static int qcmp_ort(const void *ap,const void *bp);
 static int qcmp_sortc(const void *ap,const void *bp);
 static int qcmp_sorti(const void *ap,const void *bp);
 static int iban_init(void);
-static int iban_regel_cvt(char *blz,char *kto,const char **bic,int regel_version);
+static int iban_regel_cvt(char *blz,char *kto,const char **bic,int regel_version,RETVAL *retvals);
 static const char *lut_bic_int(char *b,int zweigstelle,int *retval);
 static int bic_fkt_c(char *bic1,int mode,int filiale,int*retval,char *base,int error);
 static int biq_fkt_c(int idx,int*retval,char *base,int error);
@@ -933,6 +946,7 @@ static int create_lutfile_int(char *name, char *prolog, int slots,FILE **lut)
  * ###########################################################################
  */
 
+#line 1483 "konto_check.lxx"
 DLL_EXPORT int write_lut_block(char *lutname,UINT4 typ,UINT4 len,char *data)
 {
    char buffer[SLOT_BUFFER],*ptr;
@@ -970,6 +984,7 @@ DLL_EXPORT int write_lut_block(char *lutname,UINT4 typ,UINT4 len,char *data)
  * #############################################################################
  */
 
+#line 1521 "konto_check.lxx"
 static int write_lut_block_int(FILE *lut,UINT4 typ,UINT4 len,char *data)
 {
    char buffer[SLOT_BUFFER],*ptr,*cptr;
@@ -1105,6 +1120,7 @@ static int write_lut_block_int(FILE *lut,UINT4 typ,UINT4 len,char *data)
  * ###########################################################################
  */
 
+#line 1657 "konto_check.lxx"
 DLL_EXPORT int read_lut_block(char *lutname, UINT4 typ,UINT4 *blocklen,char **data)
 {
    int retval;
@@ -1127,6 +1143,7 @@ DLL_EXPORT int read_lut_block(char *lutname, UINT4 typ,UINT4 *blocklen,char **da
  * ###########################################################################
  */
 
+#line 1681 "konto_check.lxx"
 DLL_EXPORT int read_lut_slot(char *lutname,int slot,UINT4 *blocklen,char **data)
 {
    int retval;
@@ -1148,6 +1165,7 @@ DLL_EXPORT int read_lut_slot(char *lutname,int slot,UINT4 *blocklen,char **data)
  * ###########################################################################
  */
 
+#line 1704 "konto_check.lxx"
 static int read_lut_block_int(FILE *lut,int slot,int typ,UINT4 *blocklen,char **data)
 {
    char buffer[SLOT_BUFFER],*ptr,*sbuffer,*dbuffer;
@@ -1237,6 +1255,7 @@ static int read_lut_block_int(FILE *lut,int slot,int typ,UINT4 *blocklen,char **
             FREE(sbuffer);
             RETURN(ERROR_MALLOC);
          }
+#line 1809 "konto_check.lxx"
 
          if(fread(sbuffer,1,compressed_len,lut)<compressed_len){
             FREE(sbuffer);
@@ -2604,6 +2623,21 @@ DLL_EXPORT int lut_dir_dump(char *lutname,char *outputname)
    return OK;
 }
 
+DLL_EXPORT int lut_dir_dump_id(char *lutname,int *rv)
+{
+   char *ptr;
+   int retval,id;
+
+   if((retval=lut_dir_dump_str(lutname,&ptr))<OK){
+      if(ptr)free(ptr);
+      if(rv)*rv=retval;
+      return -1;
+   }
+   if((retval=kc_ptr2id(ptr,&id,1))<0)free(ptr);
+   if(rv)*rv=retval;
+   return id;
+}
+
 DLL_EXPORT int lut_dir_dump_str(char *lutname,char **dptr)
 {
    char *ptr;
@@ -2731,7 +2765,46 @@ DLL_EXPORT int lut_info_b(char *lut_name,char **info1,char **info2,int *valid1,i
    }
    else
       **info2=0;
-   RETURN(retval);
+   return retval;
+}
+
+
+/* Funktion lut_info_id() +§§§1 */
+/* ###########################################################################
+ * # Die Funktion lut_info_id() ist ähnlich wie lut_info_b(). Für die        #
+ * # Parameter info1 und info2 wird jedoch ein Handle zurückgegeben, das     #
+ * # mittels der Funktion kc_id2ptr() in einen String umgewandelt, sowie mit #
+ * # der Funktion kc_id_free() wieder freigegeben werden kann.               #
+ * #                                                                         #
+ * # Copyright (C) 2014 Michael Plugge <m.plugge@hs-mannheim.de>             #
+ * ###########################################################################
+ */
+
+DLL_EXPORT int lut_info_id(char *lut_name,int *info1,int *info2,int *valid1,int *valid2)
+{
+   char *i1,*i2;
+   int retval,rv;
+
+   retval=lut_info(lut_name,&i1,&i2,valid1,valid2);
+   if(i1){
+      if((rv=kc_ptr2id(i1,info1,1))<0){
+         FREE(i1);
+         FREE(i2);
+         return rv;
+      }
+   }
+   else
+      *info1=-1;
+   if(i2){
+      if((rv=kc_ptr2id(i2,info2,1))<0){
+         FREE(i1);
+         FREE(i2);
+         return rv;
+      }
+   }
+   else
+      *info2=-1;
+   return retval;
 }
 
 
@@ -2775,6 +2848,7 @@ DLL_EXPORT int lut_info_b(char *lut_name,char **info1,char **info2,int *valid1,i
  * ###########################################################################
  */
 
+#line 3402 "konto_check.lxx"
 DLL_EXPORT int lut_info(char *lut_name,char **info1,char **info2,int *valid1,int *valid2)
 {
    char *ptr,*ptr1,buffer[128];
@@ -2862,6 +2936,7 @@ DLL_EXPORT int lut_info(char *lut_name,char **info1,char **info2,int *valid1,int
 
       /* Infoblocks lesen: 1. Infoblock */
    if((ret=read_lut_block_int(in,0,LUT2_INFO,&cnt,&ptr))==OK){
+#line 3491 "konto_check.lxx"
       *(ptr+cnt)=0;
       if(valid1){
          for(ptr1=ptr,v1=v2=0;*ptr1 && *ptr1!='\n' && !isdigit(*ptr1);ptr1++);
@@ -2909,6 +2984,7 @@ DLL_EXPORT int lut_info(char *lut_name,char **info1,char **info2,int *valid1,int
 
       /* Infoblocks lesen: 2. Infoblock */
    if((ret=read_lut_block_int(in,0,LUT2_2_INFO,&cnt,&ptr))==OK){
+#line 3540 "konto_check.lxx"
       *(ptr+cnt)=0;
       if(valid2){
          for(ptr1=ptr,v1=v2=0;*ptr1 && *ptr1!='\n' && !isdigit(*ptr1);ptr1++);
@@ -3127,10 +3203,12 @@ DLL_EXPORT int copy_lutfile(char *old_name,char *new_name,int new_slots)
    qsort(slotdir,slot_cnt,sizeof(int),cmp_int);
    for(last_slot=-1,i=0;i<(int)slot_cnt;i++)if((typ=slotdir[i]) && typ!=(UINT4)last_slot){
       read_lut_block_int(lut1,0,typ,&len,&data);
+#line 3760 "konto_check.lxx"
       write_lut_block_int(lut2,typ,len,data);
       FREE(data);
       last_slot=typ;
    }
+   fclose(lut1);
    fclose(lut2);
    return OK;
 }
@@ -3355,6 +3433,7 @@ DLL_EXPORT int lut_init(char *lut_name,int required,int set)
  * # Copyright (C) 2008 Michael Plugge <m.plugge@hs-mannheim.de>             #
  * ###########################################################################
  */
+#line 3990 "konto_check.lxx"
 DLL_EXPORT int kto_check_init(char *lut_name,int *required,int **status,int set,int incremental)
 {
    char *ptr,*dptr,*data,*eptr,*prolog,*info,*user_info,*hs=NULL,*info1,*info2,*ci=NULL,name_buffer[LUT_PATH_LEN];
@@ -3582,6 +3661,7 @@ DLL_EXPORT int kto_check_init(char *lut_name,int *required,int **status,int set,
          typ1=typ;
       if(lut2_block_status[typ]==OK)continue;   /* jeden Block nur einmal einlesen */
       retval=read_lut_block_int(lut,0,typ,&len,&data);
+#line 4219 "konto_check.lxx"
 
       switch(retval){
          case LUT_CRC_ERROR:
@@ -3669,6 +3749,7 @@ DLL_EXPORT int kto_check_init(char *lut_name,int *required,int **status,int set,
             if(typ==LUT2_2_NAME || typ==LUT2_2_NAME_KURZ){
                FREE(data);
                i=read_lut_block_int(lut,0,LUT2_2_NAME_NAME_KURZ,&len,&data);
+#line 4311 "konto_check.lxx"
                if(i==OK){  /* was gefunden; Typ ändern, dann weiter wie bei OK */
                   typ=LUT2_2_NAME_NAME_KURZ;
                   typ1=LUT2_NAME_NAME_KURZ;
@@ -4214,6 +4295,45 @@ DLL_EXPORT int lut_blocks(int mode,char **lut_filename,char **lut_blocks_ok,char
       return OK;
 }
 
+
+/* Funktion lut_blocks_id() +§§§1 */
+/* ############################################################################
+ * # Die Funktion lut_blocks_id() entspricht der Funktion lut_blocks(); die   #
+ * # Rückgabe erfolgt jedoch per Handle. Die Funktion ist vor allem für die   #
+ * # Windows-DLL gedacht, da der angeforderte Speicher wieder freigegeben     #
+ * # werden muß. Rückgabewerte und Parameter s.o. Die Parameter lut_blocks_ok #
+ * # und lut_blocks_fehler können mit der Funktion kc_id2ptr() in einen       #
+ * # String umgewandelt werden; mittels kc_id_free() kann der allokierte      #
+ * # Speicher wieder freigegeben werden.                                      #
+ * #                                                                          #
+ * # Diese Funktion unterstützt keine optionalen Parameter, d.h. die drei     #
+ * # Variablen lut_filename, lut_blocks_ok und lut_blocks_fehler müssen immer #
+ * # angegeben werden; eine Übergabe von NULL führt zu einer access violation.#
+ * #                                                                          #
+ * # Copyright (C) 2014 Michael Plugge <m.plugge@hs-mannheim.de>              #
+ * ############################################################################
+ */
+DLL_EXPORT int lut_blocks_id(int mode,int *lut_filename,int *lut_blocks_ok,int *lut_blocks_fehler)
+{
+   char *lut_filename_p,*lut_blocks_ok_p,*lut_blocks_fehler_p;
+   int retval,rv;
+
+   retval=lut_blocks(mode,&lut_filename_p,&lut_blocks_ok_p,&lut_blocks_fehler_p);
+
+      /* alle drei retvals in einem if() in Handles umwandeln; es kÃ¶nnen nur
+       * malloc Fehler vorkommen, dann ist doch alles zu spÃ¤t... daher keine
+       * weitere Unterscheidung hier.
+       */
+   if((rv=kc_ptr2id(lut_filename_p,lut_filename,1)<0) || (rv=kc_ptr2id(lut_blocks_ok_p,lut_blocks_ok,1)<0)
+         || (rv=kc_ptr2id(lut_blocks_fehler_p,lut_blocks_fehler,1)<0)){
+      FREE(lut_filename_p);
+      FREE(lut_blocks_ok_p);
+      FREE(lut_blocks_fehler_p);
+      return rv;
+   }
+   return retval;
+}
+
 /* Funktion current_lutfile_name() +§§§1 */
 /* ###########################################################################
  * # current_lutfile_name(): Name, benutztes Set und Init-Level der aktuellen#
@@ -4225,6 +4345,7 @@ DLL_EXPORT int lut_blocks(int mode,char **lut_filename,char **lut_blocks_ok,char
  * ###########################################################################
  */
 
+#line 4907 "konto_check.lxx"
 DLL_EXPORT const char *current_lutfile_name(int *set,int *level,int *retval)
 {
    if(init_status<7 || !current_lutfile){
@@ -4641,7 +4762,7 @@ DLL_EXPORT const char *lut_bic(char *b,int zweigstelle,int *retval)
       else{
          strcpy(blz2,b);
          strcpy(kto2,"13");   /* nur Dummy für Funktionsaufruf */
-         iban_regel_cvt(blz2,kto2,&bic_neu,regel); /* Rückgabewert egal, nur bic_neu interessiert */
+         iban_regel_cvt(blz2,kto2,&bic_neu,regel,NULL); /* Rückgabewert egal, nur bic_neu interessiert */
          if(bic && bic_neu && strcasecmp(bic,bic_neu))*retval=OK_INVALID_FOR_IBAN;  /* BIC wurde durch eine Regel geändert */
       }
    }
@@ -5000,11 +5121,12 @@ static int iban_init(void)
  * ###########################################################################
  */
 
+#line 5683 "konto_check.lxx"
 #if USE_IBAN_RULES
-static int iban_regel_cvt(char *blz,char *kto,const char **bicp,int regel_version)
+static int iban_regel_cvt(char *blz,char *kto,const char **bicp,int regel_version,RETVAL *retvals)
 {
    char tmp_buffer[16];
-   int regel,version,b,b_alt,b_neu,k1,k2,k3,not_ok,i,ret,loesch,idx,pz_methode,uk_cnt;
+   int regel,version,b,b_alt,b_neu,k1,k2,k3,not_ok,i,ret,loesch,idx,pz_methode,uk_cnt,tmp;
 
       /* prüfen, ob bereits initialisiert wurde */
    INITIALIZE_WAIT;
@@ -5878,13 +6000,6 @@ static int iban_regel_cvt(char *blz,char *kto,const char **bicp,int regel_versio
           */
       case 20:
 
-   /* die neue Version der Regel 20 wird zum 9. Dezember in den offiziellen IBAN-Regeln veröffentlicht;
-    * die Bundesbank hat jedoch schon die Regelversion am 28. August veröffentlicht, mit der Bitte, sie
-    * möglichst schon zum 9. September einzusetzen. Der Best Guess Ansatz mit dem Fehlercode 51 bzw.
-    * IBAN_AMBIGUOUS_KTO wird entfernt und durch Verfahren zur Ermittlung eindeutiger IBANs ersetzt.
-    * Die alte Version ist jetzt (9.12.13) nicht mehr im Code enthalten, da sie ungültig ist.
-    */
-
             /* BLZ ohne IBAN-Berechnung */
          if(b==10020000)return NO_IBAN_CALCULATION;
 
@@ -5906,6 +6021,11 @@ static int iban_regel_cvt(char *blz,char *kto,const char **bicp,int regel_versio
              * die IBAN-Berechnung nicht zugelassen.
              */
          if(pz_methode==127 && kto_check_pz("c7a",kto,NULL)<OK && kto_check_pz("c7c",kto,NULL)<OK){
+            if(retvals){
+                  /* in retvals noch Werte für den Fehlerfall eintragen */
+               retvals->methode="c7b";
+               retvals->pz_methode=2127;
+            }
             if((ret=kto_check_pz("c7b",kto,NULL))==OK)
                return NO_IBAN_CALCULATION;
             else
@@ -5915,7 +6035,11 @@ static int iban_regel_cvt(char *blz,char *kto,const char **bicp,int regel_versio
             /* 10-stellige Konten sind ungültig */
          if(*kto!='0')return INVALID_KTO;
 
-         /* Prüfzifferverfahren 63 (Deutsche Bank) */
+            /* jetzt kommt nur noch das Prüfzifferverfahren 63 (Deutsche Bank) */
+         if(retvals){
+            retvals->methode="63";
+            retvals->pz_methode=63;
+         }
 
          if(k1==0){  /* erstmal maximal 7-stellige Konten */
                /* 1-4 stellige Konten sind generell nicht zugelassen */
@@ -5928,13 +6052,32 @@ static int iban_regel_cvt(char *blz,char *kto,const char **bicp,int regel_versio
                 * nur Prüfzifferverfahren 63a ist gültig).
                 */
             if(k2<1000000){
+                  /* zunächst einmal testen, ob das Konto mit Methode 63a
+                   * gültig ist, um den Rückgabewert im Fehlerfall bei Methode
+                   * 63b zu setzen. Falls 63a gültig ist, wird dann
+                   * NO_IBAN_CALCULATION zurückgegeben.
+                   *
+                   * Falls hier nicht differenziert wird, würde beim normalen
+                   * Kontentest OK zurückgegeben, beim Kontentest mit
+                   * IBAN-Regeln jedoch FALSE, was etwas verwirrend ist.
+                   */
+               tmp=kto_check_pz("63a",kto,NULL);
                for(i=0;i<8;i++)kto[i]=kto[i+2];
                kto[8]='0';
                kto[9]='0';
                if((ret=kto_check_pz("63a",kto,NULL))==OK)
                   return OK_UNTERKONTO_ATTACHED;
-               else
-                  return ret;
+               else{
+                  if(retvals){
+                        /* in retvals noch Werte für den Fehlerfall eintragen */
+                     retvals->methode="63b";
+                     retvals->pz_methode=2063;
+                  }
+                  if(tmp==OK) /* ursprüngliches Konto war mit 63a gültig */
+                     return NO_IBAN_CALCULATION;
+                  else
+                     return ret;
+               }
             }
 
                /* 7-stellige Konten: zuerst Unterkonto 00 anhängen (Vorschrift
@@ -8707,6 +8850,7 @@ static int iban_regel_cvt(char *blz,char *kto,const char **bicp,int regel_versio
 }
 #endif
 
+#line 9412 "konto_check.lxx"
 /* Funktion lut_multiple() +§§§2 */
 /* ###########################################################################
  * # lut_multiple(): Universalfunktion, um zu einer gegebenen Bankleitzahl   #
@@ -8974,6 +9118,7 @@ DLL_EXPORT int lut_cleanup(void)
    FREE(sort_pz_f);
    FREE(sort_plz);
    FREE(sort_iban_regel);
+#line 9674 "konto_check.lxx"
    if(name_raw && name_data!=name_raw)
       FREE(name_raw);
    else
@@ -9028,6 +9173,10 @@ DLL_EXPORT int lut_cleanup(void)
    for(i=0;i<last_lut_suche_idx;i++)lut_suche_free(i);
    FREE(lut_suche_arr);
    last_lut_suche_idx=0;
+   if(handle_ptr){
+      for(i=0;i<h_cnt;i++)if(handle_ptr[i] && handle_free[i])FREE(handle_ptr[i]);
+      free(handle_ptr);
+   }
 
    if(init_status&8){
 
@@ -9038,6 +9187,7 @@ DLL_EXPORT int lut_cleanup(void)
       lut_cleanup(); /* neuer Versuch, aufzuräumen */
       RETURN(INIT_FATAL_ERROR);
    }
+#line 9748 "konto_check.lxx"
    init_status&=1;
    init_in_progress=0;
    return OK;
@@ -9478,6 +9628,7 @@ static void init_atoi_table(void)
    lut_block_name2[126]="2. IBAN Regel idx";
    lut_block_name2[127]="2. BIC Hauptst.idx";
    lut_blocklen_max=453;
+#line 9990 "konto_check.lxx"
    init_status|=1;
 }
 
@@ -9537,6 +9688,7 @@ static int kto_check_int(char *x_blz,int pz_methode,char *kto)
 
    switch(pz_methode){
 
+#line 10053 "konto_check.lxx"
 /* Berechnungsmethoden 00 bis 09 +§§§3
    Berechnung nach der Methode 00 +§§§4 */
 /*
@@ -11865,6 +12017,7 @@ static int kto_check_int(char *x_blz,int pz_methode,char *kto)
  * ######################################################################
  */
 
+#line 12058 "konto_check.lxx"
       case 51:
          if(*(kto+2)=='9'){   /* Ausnahme */
 
@@ -12126,6 +12279,8 @@ static int kto_check_int(char *x_blz,int pz_methode,char *kto)
          else
             return FALSE;
 
+#line 12272 "konto_check.lxx"
+#line 12274 "konto_check.lxx"
 /*  Berechnung nach der Methode 53 +§§§4 */
 /*
  * ######################################################################
@@ -12424,6 +12579,7 @@ static int kto_check_int(char *x_blz,int pz_methode,char *kto)
  * # bewerten.                                                          #
  * ######################################################################
  */
+#line 12543 "konto_check.lxx"
       case 57:
 #if DEBUG>0
          if(retvals){
@@ -13069,6 +13225,7 @@ static int kto_check_int(char *x_blz,int pz_methode,char *kto)
  * # Prüfzifferberechnung)                                              #
  * ######################################################################
  */
+#line 13123 "konto_check.lxx"
       case 66:
 #if DEBUG>0
       case 2066:
@@ -15413,8 +15570,8 @@ static int kto_check_int(char *x_blz,int pz_methode,char *kto)
  * # Ergebnis führen, sind nicht gültig.                                #
  * #                                                                    #
  * # Die für die Berechnung relevante Kundennummer (K) befindet sich    #
- * # bei der Methode A in den Stellen 4 bis 9 der Kontonummer und bei   #
- * # den Methoden B bis E und G in den Stellen 5 bis 9.                 #
+ * # bei der Methode A und G in den Stellen 4 bis 9 der Kontonummer     #
+ * # und bei den Methoden B bis E in den Stellen 5 bis 9.               #
  * #                                                                    #
  * # Ausnahme:                                                          #
  * # Ist nach linksbündigem Auffüllen mit Nullen auf 10 Stellen die     #
@@ -20110,6 +20267,7 @@ static int kto_check_int(char *x_blz,int pz_methode,char *kto)
          return NOT_IMPLEMENTED;
    }
 }
+#line 19034 "konto_check.lxx"
 
 /*
  * ######################################################################
@@ -20235,9 +20393,17 @@ DLL_EXPORT int kto_check_regel_dbg(char *blz,char *kto,char *blz2,char *kto2,con
    blz=blz_n;
    r=lut_iban_regel(blz,0,&ret);
    if(regel && ret>0)*regel=r;
-   if((ret_regel=iban_regel_cvt(blz,kto,&bicp,r))<OK)return ret_regel;
+   if(retvals){
+         /* in retvals noch Werte für den Fehlerfall eintragen */
+      retvals->pz=-1;
+      retvals->methode="-";
+      retvals->pz_methode=-1;
+      retvals->pz_pos=-1;
+   }
+   ret_regel=iban_regel_cvt(blz,kto,&bicp,r,retvals);
    if(!bicp)bicp=lut_bic(blz,0,NULL);
    if(bic)*bic=bicp;
+   if(ret_regel<OK)return ret_regel;
    ret=kto_check_blz_dbg(blz,kto,retvals);
    if(strcmp(blz,blz_o) || strcmp(kto,kto_o)){  /* BLZ und/oder Kto ersetzt */
       if(ret_regel>3)   /* ret_regel<1 wurde schon oben zurückgegeben */
@@ -20249,7 +20415,8 @@ DLL_EXPORT int kto_check_regel_dbg(char *blz,char *kto,char *blz2,char *kto2,con
       return ret;
 #else
    if(regel)*regel=0;
-   return kto_check_regel_dbg(blz,kto,retvals);
+   if(retvals)*retvals=NULL;
+   return kto_check_regel(blz,kto);
 #endif
 }
 
@@ -20277,7 +20444,7 @@ DLL_EXPORT int kto_check_regel(char *blz,char *kto)
    kto=kto_n;
    blz=blz_n;
    regel=lut_iban_regel(blz,0,&ret);
-   if((ret_regel=iban_regel_cvt(blz,kto,&bicp,regel))<OK)return ret_regel;
+   if((ret_regel=iban_regel_cvt(blz,kto,&bicp,regel,NULL))<OK)return ret_regel;
    ret=kto_check_blz(blz,kto);
    if(strcmp(blz,blz_o) || strcmp(kto,kto_o)){  /* BLZ und/oder Kto ersetzt */
       if(ret_regel>3)   /* ret_regel<1 wurde schon oben zurückgegeben */
@@ -20350,6 +20517,7 @@ DLL_EXPORT int kto_check_pz(char *pz,char *kto,char *blz)
  * ###########################################################################
  */
 
+#line 19284 "konto_check.lxx"
 static int kto_check_blz_x(char *blz,char *kto,int *uk_cnt)
 {
    char *ptr,*dptr,xkto[32];
@@ -20686,6 +20854,7 @@ DLL_EXPORT int kto_check_blz_dbg(char *blz,char *kto,RETVAL *retvals)
  * # Copyright (C) 2007 Michael Plugge <m.plugge@hs-mannheim.de>             #
  * ###########################################################################
  */
+#line 19621 "konto_check.lxx"
 DLL_EXPORT int kto_check_pz_dbg(char *pz,char *kto,char *blz,RETVAL *retvals)
 {
    int untermethode,pz_methode;
@@ -20921,6 +21090,7 @@ DLL_EXPORT int get_lut_info2_b(char *lutname,int *version,char **prolog_p,char *
    }
    else
       **user_info_p=0;
+#line 19842 "konto_check.lxx"
    FREE(prolog);
    return OK;
 }
@@ -20997,7 +21167,8 @@ DLL_EXPORT void kc_free(char *ptr)
 DLL_EXPORT void *kc_alloc(int size,int *retval)
 {
    void *ptr;
-   if(!(ptr=calloc(size,1)))
+
+   if(!(ptr=(void*)calloc(size,1)))
       *retval=ERROR_MALLOC;
    else
       *retval=OK;
@@ -21058,16 +21229,16 @@ DLL_EXPORT const char *get_kto_check_version_x(int mode)
          if(pz_aenderungen_aktivieren)
             return "09.06.2014";
          else
-            return "09.12.2013 (Aenderungen vom 09.06.2014 enthalten aber noch nicht aktiviert)";
+            return "09.06.2014 (Aenderungen vom 09.06.2014 enthalten aber noch nicht aktiviert)";
 #else
          return "09.06.2014";
 #endif
       case 5:
-        return "03.03.2014";
+        return "09.06.2014";
       case 6:
-        return "2. Juni 2014";            /* Klartext-Datum der Bibliotheksversion */
+        return "25. Juli 2014";            /* Klartext-Datum der Bibliotheksversion */
       case 7:
-        return "final";            /* Versions-Typ der Bibliotheksversion (development, beta, final) */
+        return "development";            /* Versions-Typ der Bibliotheksversion (development, beta, final) */
    }
 }
 
@@ -21213,6 +21384,7 @@ DLL_EXPORT int dump_lutfile(char *outputname,UINT4 *required)
       default:
          break;
    }
+#line 20075 "konto_check.lxx"
    fputc('\n',out);
    while(--i)fputc('=',out);
    fputc('\n',out);
@@ -21394,8 +21566,9 @@ DLL_EXPORT int rebuild_blzfile(char *inputname,char *outputname,UINT4 set)
             fprintf(out,"%06d\n",regel);
          else
             fputc('\n',out);
-      }               
+      }
    }
+   fclose(out);
    return OK;
 }
 
@@ -21518,6 +21691,28 @@ DLL_EXPORT const char *iban2bic(char *iban,int *retval,char *blz,char *kto)
    return bic;
 }
 
+/* Funktion iban2bic_id() +§§§1 */
+/* ###########################################################################
+ * # Die Funktion iban2bic_id() entspricht der Funktion iban2bic(); für      #
+ * # die Parameter blz und kto wird allerdings Speicher allokiert und per    #
+ * # Handle wieder zurückgegeben.                                            #
+ * #                                                                         #
+ * # Copyright (C) 2014 Michael Plugge <m.plugge@hs-mannheim.de>             #
+ * ###########################################################################
+ */
+
+DLL_EXPORT const char *iban2bic_id(char *iban,int *retval,int *blz,int *kto)
+{
+   char *b,*k;
+
+   if(!(b=(char*)malloc(12)) || !(k=(char*)malloc(12)) || kc_ptr2id(b,blz,1)<0 || kc_ptr2id(k,kto,1)<0){
+      if(retval)*retval=ERROR_MALLOC;
+      return "";
+   }
+   return iban2bic(iban,retval,b,k);
+}
+
+#line 20403 "konto_check.lxx"
 /* Funktion iban_gen(), iban_bic_gen() und iban_bic_gen1 +§§§1 */
 /* ###########################################################################
  * # Die Funktion iban_gen generiert aus Bankleitzahl und Kontonummer eine   #
@@ -21598,12 +21793,54 @@ DLL_EXPORT char *iban_gen(char *blz,char *kto,int *retval)
    return iban_bic_gen(blz,kto,NULL,NULL,NULL,retval);
 }
 
+DLL_EXPORT int iban_gen_id(char *blz,char *kto,int *retval)
+{
+   char *ptr;
+   int rv,id;
+
+   if(!(ptr=iban_bic_gen(blz,kto,NULL,NULL,NULL,retval)))return -1;  /* retval wurde in iban_bic_gen gesetzt, daher gleich return */
+   if((rv=kc_ptr2id(ptr,&id,1))<0){
+      *retval=rv;
+      return -1;
+   }
+   return id;
+}
+
+DLL_EXPORT int iban_bic_gen_id(char *blz,char *kto,int *bic2,int *blz2,int *kto2,int *retval)
+{
+   char *ptr,*bp2,*b2,*k2;
+   const char *bp;
+   int rv,id;
+
+   bp2=b2=k2=NULL;
+   if(!(bp2=(char*)malloc(16)) || !(b2=(char*)malloc(16)) || !(k2=(char*)malloc(16))){
+      FREE(bp2);
+      FREE(b2);
+      FREE(k2);
+      return ERROR_MALLOC;
+   }
+   ptr=iban_bic_gen(blz,kto,&bp,b2,k2,retval);
+   strcpy(bp2,(char*)bp);
+   if((rv=kc_ptr2id(bp2,bic2,1))<0 || (rv=kc_ptr2id(b2,blz2,1))<0 || (rv=kc_ptr2id(k2,kto2,1))<0){
+      FREE(bp2);
+      FREE(b2);
+      FREE(k2);
+      *retval=rv;
+      return -1;
+   }
+
+   if(!ptr)return -1;   /* Fehler bei der Generierung */
+   if((rv=kc_ptr2id(ptr,&id,1))<0){
+      *retval=rv;
+      return -1;
+   }
+   return id;
+}
+
 DLL_EXPORT char *iban_bic_gen1(char *blz,char *kto,const char **bicp,int *retval)
 {
    return iban_bic_gen(blz,kto,bicp,NULL,NULL,retval);
 }
-
-
 
 DLL_EXPORT char *iban_bic_gen(char *blz,char *kto,const char **bicp,char *blz2,char *kto2,int *retval)
 {
@@ -21669,7 +21906,7 @@ DLL_EXPORT char *iban_bic_gen(char *blz,char *kto,const char **bicp,char *blz2,c
       }
 
          /* IBAN-Regeln anwenden; u.U. wird BLZ und/oder Konto ersetzt */
-      if((ret_regel=iban_regel_cvt(blz,kto,&bic,regel))<OK){
+      if((ret_regel=iban_regel_cvt(blz,kto,&bic,regel,NULL))<OK){
          if(!bic)bic=lut_bic(blz,0,NULL);
          if(!strncmp(bic,"        ",8))bic="";
          if(retval)*retval=ret_regel;
@@ -22271,6 +22508,33 @@ DLL_EXPORT int ipi_gen(char *zweck,char *dst,char *papier)
    return OK;
 }
 
+/* Funktion ipi_gen_id() +§§§1 */
+/* ###########################################################################
+ * # Die Funktion ipi_gen_id entspricht der Funktion ipi_gen(); allerdings   #
+ * # wird für die beiden Parameter dst und papier Speicher allokiert und     #
+ * # über jeweils ein Handle wieder zurückgegeben. Mit der Funktion          #
+ * # kc_id2ptr() kann das Handle in einen String umgewandelt werden, sowie   #
+ * # mittels der Funktion kc_id_free() wieder freigegeben werden.            #
+ * #                                                                         #
+ * # Copyright (C) 2014 Michael Plugge <m.plugge@hs-mannheim.de>             #
+ * ###########################################################################
+ */
+
+DLL_EXPORT int ipi_gen_id(char *zweck,int *dst,int *papier)
+{
+   char *d,*p;
+   int retval,rv;
+
+   if(!(d=(char*)malloc(24)))return ERROR_MALLOC;
+   if(!(p=(char*)malloc(32))){
+      free(d);
+      return ERROR_MALLOC;
+   }
+   retval=ipi_gen(zweck,d,p);
+   if((rv=kc_ptr2id(d,dst,1)<0) || (rv=kc_ptr2id(p,papier,1)<0))return rv;
+   return retval;
+}
+
 /* Funktion ipi_check() +§§§1 */
 /* ###########################################################################
  * # Die Funktion ipi_check testet einen Strukturierten Verwendungszweck     #
@@ -22338,6 +22602,7 @@ DLL_EXPORT int ipi_check(char *zweck)
  * # Copyright (C) 2009,2011 Michael Plugge <m.plugge@hs-mannheim.de>        #
  * ###########################################################################
  */
+#line 21293 "konto_check.lxx"
 
 /* Funktion volltext_zeichen() +§§§2 */
 /* Diese Funktion gibt für Zeichen die bei der Volltextsuche gültig sind
@@ -23183,6 +23448,7 @@ static int qcmp_bic_h(const void *ap,const void *bp)
       return a-b;
 }
 
+#line 22139 "konto_check.lxx"
 
 /* Funktion qcmp_bic() +§§§3 */
 static int qcmp_bic(const void *ap,const void *bp)
@@ -23287,6 +23553,7 @@ static int qcmp_iban_regel(const void *ap,const void *bp)
    else 
       return a-b;
 }
+#line 22154 "konto_check.lxx"
 
 /* Funktion init_blzf() +§§§2
  * Diese Funktion initialisiert das Array mit den Bankleitzahlen für alle
@@ -23354,6 +23621,7 @@ DLL_EXPORT int konto_check_idx2blz(int idx,int *zweigstelle,int *retval)
 }
 
 /* Funktion suche_int1() +§§§2 */
+#line 22222 "konto_check.lxx"
 static int suche_int1(int a1,int a2,int *anzahl,int **start_idx,int **zweigstellen_base,int **blz_base,
       int **base_name,int **base_sort,int(*cmp)(const void *, const void *),int cnt,int such_idx)
 {
@@ -23404,6 +23672,7 @@ static int suche_int1(int a1,int a2,int *anzahl,int **start_idx,int **zweigstell
 }
 
 /* Funktion suche_int2() +§§§2 */
+#line 22273 "konto_check.lxx"
 static int suche_int2(int a1,int a2,int *anzahl,int **start_idx,int **zweigstellen_base,int **blz_base,
       int **base_name,int **base_sort,int(*cmp)(const void *, const void *),int such_idx,int pz_suche)
 {
@@ -23981,6 +24250,7 @@ static int cmp_suche_sort(const void *ap,const void *bp)
 DLL_EXPORT int lut_suche_sort1(int anzahl,int *blz_base,int *zweigstellen_base,int *idx,int *anzahl_o,int **idx_op,int **cnt_op,int uniq)
 {
    int i,j,last_idx,*idx_a,*cnt_o;
+#line 22852 "konto_check.lxx"
 
    if(idx_op)*idx_op=NULL;
    if(cnt_op)*cnt_op=NULL;
@@ -24062,6 +24332,7 @@ DLL_EXPORT int lut_suche_sort2(int anzahl,int *blz,int *zweigstellen,int *anzahl
    return OK;
 }
 
+#line 22935 "konto_check.lxx"
 /* Funktion lut_suche_volltext() +§§§2 */
 DLL_EXPORT int lut_suche_volltext(char *such_wort,int *anzahl,int *base_name_idx,char ***base_name,
       int *zweigstellen_anzahl,int **start_idx,int **zweigstellen_base,int **blz_base)
@@ -24191,6 +24462,7 @@ DLL_EXPORT int lut_suche_blz(int such1,int such2,int *anzahl,int **start_idx,int
    return suche_int1(such1,such2,anzahl,start_idx,zweigstellen_base,blz_base,&blz_f,&sort_blz,qcmp_blz,cnt,0);
 }
 
+#line 23085 "konto_check.lxx"
 /* Funktion lut_suche_bic() +§§§2 */
 DLL_EXPORT int lut_suche_bic(char *such_name,int *anzahl,int **start_idx,int **zweigstellen_base,
       char ***base_name,int **blz_base)
@@ -24281,6 +24553,7 @@ DLL_EXPORT int lut_suche_regel(int such1,int such2,int *anzahl,int **start_idx,i
    return suche_int2(such1*100,such2*100+99,anzahl,start_idx,zweigstellen_base,blz_base,&iban_regel,&sort_iban_regel,qcmp_iban_regel,LUT2_IBAN_REGEL_SORT,0);
 }
 
+#line 23118 "konto_check.lxx"
 
 /* Funktion lut_suche_bic_h() +§§§2 */
 DLL_EXPORT int lut_suche_bic_h(char *such_name,int *anzahl,int **start_idx,int **zweigstellen_base,
@@ -24666,6 +24939,7 @@ DLL_EXPORT const char *iban_ort(char *iban,int filiale,int*retval)
 {
    return iban_fkt_s(iban,filiale,retval,lut_ort);
 }
+#line 23207 "konto_check.lxx"
 
 static int bic_fkt_c(char *bic1,int mode,int filiale,int*retval,char *base,int error)
 {
@@ -25943,6 +26217,7 @@ DLL_EXPORT const char *pz2str(int pz,int *ret)
       default:   return "???";
    }
 }
+#line 24162 "konto_check.lxx"
 
 /* Funktion lut_keine_iban_berechnung() +§§§1 */
 /*
@@ -26105,6 +26380,117 @@ DLL_EXPORT char *kto_check_test_vars(char *txt,UINT4 i)
 
 #endif
 
+
+/* Funktionen kc_ptr2id(), kc_id2ptr() und kc_id_free() +§§§1 */
+/* ###########################################################################
+ * # Die folgenden Funktionen dienen dazu, ein Array von (char-)Pointern     #
+ * # aufzubauen, in dem die Adressen von allokierten Strings gespeichert     #
+ * # werden. Die Routinen, die Speicher für Strings allokieren, können dann  #
+ * # in der DLL die String-Routinen direkt verwenden und müssen nicht mehr   #
+ * # den etwas eigenwilligen (Schleich-)Weg über IntPtr nehmen, damit der    #
+ * # Speicher wieder freigegeben werden kann...                              #
+ * #                                                                         #
+ * # Copyright (C) 2014 Michael Plugge <m.plugge@hs-mannheim.de>             #
+ * ###########################################################################
+ */
+
+/* Funktion kc_ptr2id() +§§§2 */
+/* ###########################################################################
+ * # Die Funktion kc_ptr2id() sucht für einen Pointer einen freien Slot      #
+ * # in dem Array handle_ptr[]; falls kein Platz mehr in dem Array ist oder  #
+ * # es noch nicht initialisiert wurde, wird es erweitert.                   #
+ * #                                                                         #
+ * # Falls die Variable release_mem 1 ist wird der Speicher bei Aufruf der   #
+ * # Funktion kc_id_free() wieder freigegeben, andernfalls bleibt der Pointer#
+ * # erhalten. Beim Aufruf mit release_mem=0 können somit auch String-       #
+ * # Konstanten einem Handle zugeordnet werden. Falls die entsprechende      #
+ * # Konstante schon ein Handle hat, wird dieses zurückgegeben; beim Aufruf  #
+ * # von kc_id_free() wird es auch nicht gelöscht, der Funktionsaufruf gibt  #
+ * # nur OK zurück, ohne etwas zu tun.                                       #
+ * #                                                                         #
+ * # Copyright (C) 2014 Michael Plugge <m.plugge@hs-mannheim.de>             #
+ * ###########################################################################
+ */
+
+#define HANDLE_CNT_INCREMENT 100
+
+static int kc_ptr2id(char *ptr,int *handle,int release_mem)
+{
+   int i;
+
+   *handle=-1; /* für evl. malloc-Fehler vorbelegen */
+   if(!h_cnt){
+      if(!(handle_ptr=(char **)calloc(sizeof(char*),HANDLE_CNT_INCREMENT)) || !(handle_free=(int*)calloc(sizeof(int),HANDLE_CNT_INCREMENT)))return ERROR_MALLOC;
+      h_cnt=HANDLE_CNT_INCREMENT;
+   }
+   if(!release_mem)  /* Handle für fixen String, suchen ob er schon vergeben wurde */
+      for(i=0;i<h_cnt;i++)if(handle_ptr[i]==ptr && !handle_free[i]){
+         *handle=i;
+         return OK;
+      }
+   for(i=0;i<h_cnt;i++)if(!handle_ptr[i]){
+      *handle=i;
+      handle_ptr[i]=ptr;
+      handle_free[i]=release_mem;
+      return OK;
+   }
+   if(!(handle_ptr=(char **)realloc(handle_ptr,sizeof(char*)*(h_cnt+HANDLE_CNT_INCREMENT)))
+         || !(handle_free=(int*)realloc(handle_free,sizeof(int)*(h_cnt+HANDLE_CNT_INCREMENT))))return ERROR_MALLOC;
+   h_cnt+=HANDLE_CNT_INCREMENT;
+   *handle=i;
+   handle_ptr[i]=ptr;
+   handle_free[i++]=release_mem;
+   for(;i<h_cnt;i++){
+      handle_ptr[i]=NULL;
+      handle_free[i]=0;
+   }
+   return OK;
+}
+
+/* Funktion kc_id2ptr() +§§§2 */
+/* ###########################################################################
+ * # Diese Funktion gibt den Pointer zu einem Handle zurück. Dieser Wert     #
+ * # kann dann als String-Pointer in den DLL-Routinen verwendet werden.      #
+ * #                                                                         #
+ * # Copyright (C) 2014 Michael Plugge <m.plugge@hs-mannheim.de>             #
+ * ###########################################################################
+ */
+
+DLL_EXPORT char *kc_id2ptr(int handle,int *retval)
+{
+   if(handle>=0 && handle<h_cnt && handle_ptr[handle]){
+      if(retval)*retval=OK;
+      return handle_ptr[handle];
+   }
+   else{
+      if(retval)*retval=INVALID_HANDLE;
+      return "";
+   }
+}
+
+/* Funktion kc_id_free() +§§§2 */
+/* ###########################################################################
+ * # Diese Funktion gibt den Speicher, der zu einem Handle gehört, wieder    #
+ * # frei und setzt den entsprechenden Slot-Eintrag auf NULL.                #
+ * #                                                                         #
+ * # Copyright (C) 2014 Michael Plugge <m.plugge@hs-mannheim.de>             #
+ * ###########################################################################
+ */
+
+DLL_EXPORT int kc_id_free(int handle)
+{
+   if(handle>=0 && handle<h_cnt && handle_ptr[handle]){
+      if(handle_free[handle]){  /* Freigabe nur bei allokiertem Speicher */
+         free(handle_ptr[handle]);
+         handle_ptr[handle]=NULL;
+         handle_free[handle]=0;
+      }
+      return OK;
+   }
+   return INVALID_HANDLE;
+}
+
+
 #else /* !INCLUDE_KONTO_CHECK_DE */
 /* Leerdefinitionen für !INCLUDE_KONTO_CHECK_DE +§§§1 */
 #include "konto_check.h"
@@ -26152,6 +26538,8 @@ XI lut_init(char *lut_name,int required,int set)EXCLUDED
 XI kto_check_init(char *lut_name,int *required,int **status,int set,int incremental)EXCLUDED
 XI kto_check_init_p(char *lut_name,int required,int set,int incremental)EXCLUDED
 XI lut_info(char *lut_name,char **info1,char **info2,int *valid1,int *valid2)EXCLUDED
+XI lut_info_b(char *lut_name,char **info1,char **info2,int *valid1,int *valid2)EXCLUDED
+XI lut_info_id(char *lut_name,int *info1,int *info2,int *valid1,int *valid2)EXCLUDED
 XI lut_valid(void)EXCLUDED
 XI lut_multiple(char *b,int *cnt,int **p_blz,char  ***p_name,char ***p_name_kurz,int **p_plz,char ***p_ort,
       int **p_pan,char ***p_bic,int *p_pz,int **p_nr,char **p_aenderung,char **p_loeschung,int **p_nachfolge_blz,
@@ -26238,10 +26626,14 @@ XI ci_check(char *ci)EXCLUDED
 XI bic_check(char *search_bic,int *cnt)EXCLUDED
 XI iban_check(char *iban,int *retval)EXCLUDED
 XCC iban2bic(char *iban,int *retval,char *blz,char *kto)EXCLUDED_S
+XCC iban2bic_id(char *iban,int *retval,int *blz,int *kto)EXCLUDED_S
 XC iban_gen(char *kto,char *blz,int *retval)EXCLUDED_S
+XI iban_gen_id(char *kto,char *blz,int *retval)EXCLUDED
 XC char *iban_bic_gen(char *blz,char *kto,const char **bic,char *blz2,char *kto2,int *retval)EXCLUDED_S
 XC char *iban_bic_gen1(char *blz,char *kto,const char **bic,int *retval)EXCLUDED_S
 XI ipi_gen(char *zweck,char *dst,char *papier)EXCLUDED
+XI ipi_gen_id(char *zweck,int *dst,int *papier)EXCLUDED
+XI iban_bic_gen_id(char *blz,char *kto,int *bic2,int *blz2,int *kto2,int *retval)EXCLUDED
 XI ipi_check(char *zweck)EXCLUDED
 XI kto_check_blz_dbg(char *blz,char *kto,RETVAL *retvals)EXCLUDED
 XI kto_check_pz_dbg(char *pz,char *kto,char *blz,RETVAL *retvals)EXCLUDED
@@ -26269,6 +26661,7 @@ XI lut_suche_multiple(char *such_str,int uniq,char *such_cmd,UINT4 *anzahl,UINT4
 XI lut_suche_sort1(int anzahl,int *blz_base,int *zweigstellen_base,int *idx,int *anzahl_o,int **idx_op,int **cnt_op,int uniq)EXCLUDED
 XI lut_suche_sort2(int anzahl,int *blz,int *zweigstellen,int *anzahl_o,int **blz_op,int **zweigstellen_op,int **cnt_o,int uniq)EXCLUDED
 XI lut_blocks(int mode,char **lut_filename,char **lut_blocks_ok,char **lut_blocks_fehler)EXCLUDED
+XI lut_blocks_id(int mode,int *lut_filename,int *lut_blocks_ok,int *lut_blocks_fehler)EXCLUDED
 XI kto_check_init_default(char *lut_name,int block_id)EXCLUDED
 XI kto_check_default_keys(char ***keys,int *cnt)EXCLUDED
 XI kto_check_set_default(char *key,char *val)EXCLUDED
@@ -26280,4 +26673,6 @@ DLL_EXPORT void *kc_alloc(int size,int *retval)EXCLUDED_VP
 XI set_default_compression(int mode)EXCLUDED
 XI lut_keine_iban_berechnung(char *iban_blacklist,char *lutfile,int set)EXCLUDED
 XI pz_aenderungen_enable(int set)EXCLUDED
+XC kc_id2ptr(int handle,int *retval)EXCLUDED_S
+XI kc_id_free(int handle)EXCLUDED
 #endif

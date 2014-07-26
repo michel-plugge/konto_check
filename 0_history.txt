@@ -9,6 +9,15 @@
 ##################################################################################
 
 ##################################################################################
+###                       26.07.14 Version 5.5 (development)                   ###
+##################################################################################
+
+Diese SVN-Version korrigiert einen Fehler in den Routinen ci_check() und
+bic_check(), der unter Ruby 2.0 die Funktionen unbrauchbar machte (s.
+http://sourceforge.net/p/kontocheck/patches/4/). Auﬂerdem sind die Funktionen
+pz_aenderungen_enable() und rebuild_blzfile() auch direkt aus Ruby verwendbar.
+
+##################################################################################
 ###                       02.06.14 Version 5.4 (final)                         ###
 ##################################################################################
 

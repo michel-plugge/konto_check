@@ -196,6 +196,28 @@ module KontoCheck
       KontoCheckRaw::encoding(*args)
     end
 
+#===KontoCheck::pz_aenderungen_enable( set)
+#=====KontoCheckRaw::pz_aenderungen_enable( set)
+#
+# Die Funktion pz_aenderungen_enable() dient dazu, den Status des Flags
+# pz_aenderungen_aktivieren abzufragen bzw. zu setzen. Falls die Variable
+# set 1 ist, werden die Änderungen aktiviert, falls sie 0 ist, werden die
+# Änderungen deaktiviert. Beim Aufruf ohne Parameter oder mit einem anderen
+# Wert wird das aktuelle Flag nicht verändert, sondern nur der Status
+# zurückgegeben.
+#
+#====Parameter:
+#
+# set:           0 oder 1: Änderungen deaktivieren/aktivieren
+#                anderer Wert: nur Abfrage des Status
+#
+#====Rückgabe:
+# Rückgabe:      aktueller Status des Flags                                                                                             #
+
+    def pz_aenderungen_enable(*args)
+      KontoCheckRaw::pz_aenderungen_enable(*args)
+    end
+
 #===KontoCheck::encoding_str( [mode])
 #=====KontoCheckRaw::encoding_str( [mode])
 #=====KontoCheck::encoding( [mode])
@@ -351,6 +373,64 @@ module KontoCheck
 
     def generate_lutfile(*args)
       KontoCheckRaw::generate_lutfile(*args)
+    end
+
+
+#===KontoCheck::rebuild_blzfile( inputfile,outputfile,set)
+#=====KontoCheckRaw::rebuild_blzfile( inputfile,outputfile,set)
+#
+#Die Funktion rebuild_blzfile() war ursprünglich als Härtetest für die
+#LUT2-Routinen konzipiert: mit ihr lässt sich die BLZ-Datei komplett aus
+#einer LUT-Datei neu generieren. Die Funktion ist allerdings auch so
+#interessant, so daß sie in alle Ports eingebunden wurde. Die generierte
+#BLZ-Datei sollte (bis auf die Sortierung und die vier Testbanken) keinen
+#Unterschied zur originalen BLZ-Datei aufweisen.
+#
+#Falls der Parameter set 1 oder 2 ist, wird als Eingabedatei eine LUT-
+#datei erwartet; bei einem set-Parameter von 0 eine Klartextdatei
+#(Bundesbankdatei).
+#
+#Copyright (C) 2014 Michael Plugge <m.plugge@hs-mannheim.de>
+#
+#====Aufruf:
+#retval=KontoCheck::rebuild_blzfile(inputname,outputname,set)
+#
+#====Parameter:
+#
+#* inputfile: Eingabedatei (LUT-Datei oder Textdatei der Deutschen Bundesbank)
+#* outputfile: Name der Ausgabedatei
+#* set: (0, 1 oder 2)
+#   0: Die Eingabedatei ist eine Textdatei; es wird eine LUT-Datei generieret und diese wieder zurück umgewandlt.
+#   1. Das erste Set der LUT-Datei wird extrahiert
+#   2. Das zweite Set der LUT-Datei wird extrahiert
+#
+#====Rückgabe:
+#Rückgabe ist ein skalarer Statuscode, der die folgenden Werte annehmen kann:
+#
+#====Mögliche Statuscodes:
+#  -112  (KTO_CHECK_UNSUPPORTED_COMPRESSION) "die notwendige Kompressions-Bibliothek wurde beim Kompilieren nicht eingebunden"
+#   -64  (INIT_FATAL_ERROR)           "Initialisierung fehlgeschlagen (init_wait geblockt)"
+#   -57  (LUT2_GUELTIGKEIT_SWAPPED)   "Im Gültigkeitsdatum sind Anfangs- und Enddatum vertauscht"
+#   -56  (LUT2_INVALID_GUELTIGKEIT)   "Das angegebene Gültigkeitsdatum ist ungültig (Soll: JJJJMMTT-JJJJMMTT)"
+#   -38  (LUT2_PARTIAL_OK)            "es wurden nicht alle Blocks geladen"
+#   -36  (LUT2_Z_MEM_ERROR)           "Memory error in den ZLIB-Routinen"
+#   -35  (LUT2_Z_DATA_ERROR)          "Datenfehler im komprimierten LUT-Block"
+#   -34  (LUT2_BLOCK_NOT_IN_FILE)     "Der Block ist nicht in der LUT-Datei enthalten"
+#   -33  (LUT2_DECOMPRESS_ERROR)      "Fehler beim Dekomprimieren eines LUT-Blocks"
+#   -32  (LUT2_COMPRESS_ERROR)        "Fehler beim Komprimieren eines LUT-Blocks"
+#   -31  (LUT2_FILE_CORRUPTED)        "Die LUT-Datei ist korrumpiert"
+#   -20  (LUT_CRC_ERROR)              "Prüfsummenfehler in der blz.lut Datei"
+#   -15  (INVALID_BLZ_FILE)           "Fehler in der blz.txt Datei (falsche Zeilenlänge)"
+#   -13  (FATAL_ERROR)                "schwerer Fehler im Konto_check-Modul"
+#   -11  (FILE_WRITE_ERROR)           "kann Datei nicht schreiben"
+#   -10  (FILE_READ_ERROR)            "kann Datei nicht lesen"
+#    -9  (ERROR_MALLOC)               "kann keinen Speicher allokieren"
+#    -7  (INVALID_LUT_FILE)           "die blz.lut Datei ist inkosistent/ungültig"
+#    -6  (NO_LUT_FILE)                "die blz.lut Datei wurde nicht gefunden"
+#     1  (OK)                         "ok"
+
+    def rebuild_blzfile(*args)
+      KontoCheckRaw::rebuild_blzfile(*args)
     end
 
 #===KontoCheck::init( [p1 [,p2 [,set]]])
