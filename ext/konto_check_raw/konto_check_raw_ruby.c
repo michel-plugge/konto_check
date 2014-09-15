@@ -4355,7 +4355,7 @@ void Init_konto_check_raw()
  *
  * <b>ATTENTION:</b> There are a few important changes in the API between
  * version 0.0.2 (version by Peter Horn/Provideal), version 0.0.6 (jeanmartin)
- * and this version (V. 5.5 from 2014-07-25):
+ * and this version (V. 5.5 from 2014-09-01):
  *
  * * The function KontoCheck::load_bank_data() is no longer used; it is
  *   replaced by KontoCheck::init() and KontoCheck::generate_lutfile().

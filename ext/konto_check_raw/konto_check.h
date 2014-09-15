@@ -857,6 +857,7 @@ DLL_EXPORT int lut_info(char *lut_name,char **info1,char **info2,int *valid1,int
 DLL_EXPORT int lut_info_b(char *lut_name,char **info1,char **info2,int *valid1,int *valid2);
 DLL_EXPORT int lut_info_id(char *lut_name,int *info1,int *info2,int *valid1,int *valid2);
 DLL_EXPORT const char *current_lutfile_name(int *set,int *level,int *retval);
+DLL_EXPORT int current_lutfile_name_id(int *set,int *level,int *retval);
 DLL_EXPORT int lut_valid(void);
 DLL_EXPORT int get_lut_info2(char *lut_name,int *version_p,char **prolog_p,char **info_p,char **user_info_p);
 DLL_EXPORT int get_lut_info_b(char **info,char *lutname);
@@ -1050,8 +1051,47 @@ const DLL_EXPORT char *pz2str(int pz,int *ret);
 DLL_EXPORT int pz_aenderungen_enable(int set);
 
 
+   /* Funktionen für Strings mit Rückgabe per handle */
 DLL_EXPORT char *kc_id2ptr(int handle,int *retval);
 DLL_EXPORT int kc_id_free(int handle);
+
+   /* Handle-Varianten für Funktionen mit Stringkonstanten als Rückgabewert */
+DLL_EXPORT int kto_check_encoding_str_id(int mode);
+DLL_EXPORT int kto_check_retval2txt_id(int retval);
+DLL_EXPORT int kto_check_retval2txt_short_id(int retval);
+DLL_EXPORT int kto_check_retval2html_id(int retval);
+DLL_EXPORT int kto_check_retval2dos_id(int retval);
+DLL_EXPORT int kto_check_retval2utf8_id(int retval);
+DLL_EXPORT int get_kto_check_version_id(int mode);
+
+DLL_EXPORT int lut_name_id(char *b,int zweigstelle,int *retval);
+DLL_EXPORT int lut_name_i_id(int b,int zweigstelle,int *retval);
+DLL_EXPORT int lut_name_kurz_id(char *b,int zweigstelle,int *retval);
+DLL_EXPORT int lut_name_kurz_i_id(int b,int zweigstelle,int *retval);
+DLL_EXPORT int lut_ort_id(char *b,int zweigstelle,int *retval);
+DLL_EXPORT int lut_ort_i_id(int b,int zweigstelle,int *retval);
+DLL_EXPORT int lut_bic_id(char *b,int zweigstelle,int *retval);
+DLL_EXPORT int lut_bic_i_id(int b,int zweigstelle,int *retval);
+DLL_EXPORT int lut_bic_h_id(char *b,int zweigstelle,int *retval);
+DLL_EXPORT int lut_bic_hi_id(int b,int zweigstelle,int *retval);
+
+DLL_EXPORT int bic_bic_id(char *bic_name,int mode,int filiale,int*retval);
+DLL_EXPORT int bic_bic_h_id(char *bic_name,int mode,int filiale,int*retval);
+DLL_EXPORT int bic_name_id(char *bic_name,int mode,int filiale,int*retval);
+DLL_EXPORT int bic_name_kurz_id(char *bic_name,int mode,int filiale,int*retval);
+DLL_EXPORT int bic_ort_id(char *bic_name,int mode,int filiale,int*retval);
+
+DLL_EXPORT int biq_bic_id(int idx,int*retval);
+DLL_EXPORT int biq_bic_h_id(int idx,int*retval);
+DLL_EXPORT int biq_name_id(int idx,int*retval);
+DLL_EXPORT int biq_name_kurz_id(int idx,int*retval);
+DLL_EXPORT int biq_ort_id(int idx,int*retval);
+
+DLL_EXPORT int iban_bic_id(char *iban,int filiale,int*retval);
+DLL_EXPORT int iban_bic_h_id(char *iban,int filiale,int*retval);
+DLL_EXPORT int iban_name_id(char *iban,int filiale,int*retval);
+DLL_EXPORT int iban_name_kurz_id(char *iban,int filiale,int*retval);
+DLL_EXPORT int iban_ort_id(char *iban,int filiale,int*retval);
 
 /*
  * ######################################################################
