@@ -1,3 +1,15 @@
+important changes in version 5.8:
+   - new check method 87d
+
+important changes in version 5.7:
+   - bug fix in method 90 (method 90g was excluded)
+
+important changes in version 5.6:
+   - new check method E2
+   - changes in check methods 08, 28, 34, 44 (more details in the source code)
+   - the compiler switch USE_IBAN_RULES is now completely removed
+   - some minor changes and bug fixes
+
 important changes in version 5.5:
    - bug fix in functions bic_check() and ci_check()
    - the functions rebuild_blzfile() and pz_aenderungen_enable() are available for ruby

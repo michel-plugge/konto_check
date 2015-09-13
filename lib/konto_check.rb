@@ -5,7 +5,7 @@ require 'konto_check_raw'
 
 #This is a C/Ruby library to check the validity of German Bank Account
 #Numbers. All currently defined test methods by Deutsche Bundesbank
-#(April 2013: 00 to E0) are implemented. 
+#(April 2015: 00 to E2) are implemented. 
 #
 #<b>ATTENTION:</b> There are a few important changes in the API between version 0.0.2 (version
 #by Peter Horn/Provideal), version 0.0.6 (jeanmartin) and this version:

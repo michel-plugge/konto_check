@@ -4,9 +4,71 @@
 ##################################################################################
 #                                                                                #
 # Autor             : Michael Plugge <m.plugge@hs-mannheim.de>                   #
-# Version           : 5.5 (final)                                                #
-# Datum             : 01.09.2014                                                 #
+# Version           : 5.8                                                        #
+# Datum             : 22.08.2015                                                 #
 ##################################################################################
+
+##################################################################################
+###                       22.08.15 Version 5.8 (final)                         ###
+##################################################################################
+
+   Diese Version enthält wieder nur einige kleinere Änderungen:
+
+   - neues Prüfzifferverfahren 87d
+
+   - diverse Änderungen in den CLI-Tools der C-Bibliothek
+
+##################################################################################
+###                       26.05.15 Version 5.7 (final)                         ###
+##################################################################################
+
+
+   Diese Version ist ein reines Bugfix-Release für die Prüfziffermethode 90; bei
+   dieser Methode wurde die Untermethode 90g durch eine irrtümlich nicht entfernte
+   Bedingung nicht mehr getestet, so daß Konten die unter diese Methode fielen,
+   als falsch ausgegeben wurden.
+
+##################################################################################
+###                       13.05.15 Version 5.6 (final)                         ###
+##################################################################################
+
+
+   Diese Version enthält vor allem eine Reihe Änderungen an verschiedenen Prüfziffermethoden:
+
+   - neues Prüfzifferverfahren E2
+
+   - Prüfzifferverfahren 08: Die Konten unter 60 000 werden jetzt als richtig (ohne
+     Prüfzifferberechnung) ausgegeben (siehe dazu den ausführlichen Kommentar im
+     Quellcode in konto_check.c Zeilen 9906 ff).
+
+   - bei den Prüfziffermethoden 28 und 34 wird nicht mehr auf fehlende
+     Unterkonten geprüft (in der PDF-Datei findet sich nichts dazu)
+
+   - Prüfziffermethode 44: es wird ein Sonderfall aus der IBAN-Regel 49 berücksichtigt
+     (näheres dazu in konto_check.c Zeilen 11453 ff)
+
+   - der Compiler-Switch USE_IBAN_RULES wurde entfernt; die Verwendung der IBAN-Regeln
+     wird jetzt immer vorausgesetzt. In dem Zusammenhang entfällt auch die Funktion
+     static int kto_check_blz_x().
+
+   - bei der IBAN-Regel 0 wird nicht mehr auf weggelassene Unterkonten geprüft
+     (das war eine Krücke aus der Zeit, als die IBAN-Regeln noch nicht so verbreitet
+     waren; mittlerweile sind sie für IBAN-Rechnungen jedoch obligatorisch, und damit
+     entfällt auch die Notwendigkeit dafür).
+
+   - in der Funktion iban2bic() wurde die Bundesbank nicht richtig behandelt
+     (bei Konten der Bundesbank wurde ein Fehler zurückgegeben)
+
+   - PHP: bei lut_suche_volltext werden (optional) die gefundenen Suchbegriffe
+     zurückgegeben
+
+   - einige kleinere Änderungen und Korrekturen
+
+   - es gibt jetzt auch eine JSON Online-Version von konto_check; diese ist unter der
+     URL https://www.michael-plugge.de/konto_check/api.php zu erreichen. Das Ergebnis
+     der Prüfung bzw. die angeforderten Informationen wird als JSON kodierter
+     String zurückgeliefert.
+
 
 ##################################################################################
 ###                       01.09.14 Version 5.5 (final)                         ###

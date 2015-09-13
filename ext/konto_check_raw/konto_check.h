@@ -1,5 +1,6 @@
 /* vim: ft=c:set si:set fileencoding=iso-8859-1
  */
+#line 9 "konto_check_h.lx"
 
 /*
  * ##########################################################################
@@ -9,7 +10,7 @@
  * #  Verwendung in anderen Programmen bzw. Programmiersprachen benutzt     #
  * #  werden.                                                               #
  * #                                                                        #
- * #  Copyright (C) 2002-2014 Michael Plugge <m.plugge@hs-mannheim.de>      #
+ * #  Copyright (C) 2002-2015 Michael Plugge <m.plugge@hs-mannheim.de>      #
  * #                                                                        #
  * #  Dieses Programm ist freie Software; Sie dürfen es unter den           #
  * #  Bedingungen der GNU Lesser General Public License, wie von der Free   #
@@ -45,14 +46,6 @@
 
 #ifndef KONTO_CHECK_H_INCLUDED
 #define KONTO_CHECK_H_INCLUDED
-
-/* IBAN-Regeln benutzen (gültig ab 3.6.2013) */
-#define USE_IBAN_RULES 1
-
-   /* Änderungen der Prüfziffermethoden zum 9. September 2013 erzwingen
-    * (bei 0 werden sie abhängig vom Datum aktiviert; aktuell nicht benutzt).
-   */ 
-#define FORCE_AENDERUNGEN_2013_09 0
 
    /* Falls EXTRA_BLZ_REGEL auf 1 gesetzt wird, wird beim IBAN-Test
     * unterschieden ob eine Regel ignoriert wurde, die nur eine BLZ ersetzt,
@@ -486,6 +479,7 @@ extern const char *lut2_feld_namen[256];
 #define OK_KTO_REPLACED_NO_PZ                   24
 #define OK_UNTERKONTO_ATTACHED                  25
 #define OK_SHORT_BIC_USED                       26
+#line 276 "konto_check_h.lx"
 
 #define MAX_BLZ_CNT 30000  /* maximale Anzahl BLZ's in generate_lut() */
 
